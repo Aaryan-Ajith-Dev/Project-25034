@@ -19,3 +19,7 @@ __pycache__/
 client/src/data/*
 client/mongodb-compass_1.46.11_amd64.deb
 client/postings.ndjson
+
+# Add all pycaches
+**/__pycache__/
+**/*.pyc

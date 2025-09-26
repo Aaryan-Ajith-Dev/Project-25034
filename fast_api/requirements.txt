@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+google-cloud-translate
+google-auth
+python-dotenv
+pymongo
+bcrypt
+python-jose[cryptography]
+passlib[bcrypt]
+numpy
