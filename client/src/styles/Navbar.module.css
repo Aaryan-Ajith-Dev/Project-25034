@@ -1,0 +1,397 @@
+/* src/styles/Navbar.module.css */
+
+
+/* Outer header container provides consistent centering */
+.headerWrap {
+  width: 100%;
+  padding: 8px 0;                /* vertical breathing space */
+  background: #fff;              /* same as .navUpper */
+  --site-sz: 92vw;
+  --nav-break: 920px;            /* breakpoint for hamburger */
+}
+
+
+/* Logos strip */
+.navUpper { background-color: white; }
+
+
+.headerInner {
+  max-width: var(--site-sz);     /* keep in sync with navInner/form */
+  margin: 0 auto;
+  padding: 8px 24px;             /* left/right gutters */
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+
+/* Responsive logos row */
+.logos {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;               /* allow wrap on small widths */
+}
+.logo {
+  height: 34px;
+  width: auto;
+  display: block;
+  max-width: 100%;
+}
+@media (max-width: 920px) {
+  .logo { height: 28px; }        /* shrink logos on tablets/phones */
+}
+@media (max-width: 480px) {
+  .logos { gap: 10px; }
+  .logo { height: 24px; }
+}
+
+
+/* Right-corner button row in the logos strip */
+.ctaRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto; /* ensures right edge in headerInner */
+  flex-wrap: wrap;
+}
+
+
+/* Language select (legacy; not used by dropdown version) */
+.langSelect {
+  appearance: none;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(0,0,0,.15);
+  background: #ffffff;
+  color: #0f172a;
+  font-weight: 700;
+  cursor: pointer;
+}
+.langSelect:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(29,78,216,.12);
+}
+
+
+/* Hide CTA label on very small screens to save space */
+@media (max-width: 480px) {
+  .ctaText { display: none; }    /* icon-only on very small screens */
+}
+
+
+/* Base CTA button */
+.ctaBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background .18s ease, border-color .18s ease, box-shadow .18s ease, transform .12s ease;
+}
+
+
+/* Orange primary variant */
+.ctaPrimary {
+  background: var(--accent, #f97316);
+  color: #fff;
+  border-color: var(--accent, #f97316);
+  box-shadow: 0 2px 6px rgba(249,115,22,.25);
+}
+.ctaPrimary:hover {
+  background: #ea580c; /* orange-600 */
+  border-color: #ea580c;
+  box-shadow: 0 4px 12px rgba(234,88,12,.28);
+  transform: translateY(-1px);
+}
+.ctaPrimary:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(234,88,12,.22);
+}
+
+
+/* Icon and text inside buttons */
+.ctaIcon { width: 18px; height: 18px; display: block; }
+.ctaText { white-space: nowrap; }
+
+
+/* Navbar bar sits below logos */
+.navbar { margin: 6px 0 0; }     /* small gap below logos */
+
+
+/* Dark bar with rounded corners */
+.navInner {
+  background: var(--nav-bg);
+  color: var(--nav-text);
+  max-width: var(--site-sz);     /* match headerInner */
+  margin: 0 auto;
+  padding: 10px 16px;
+  border-radius: 10px;
+  position: relative;
+}
+
+
+/* Desktop Nav list */
+.navList {
+  text-transform: uppercase;
+  display: flex;
+  justify-content: space-between;
+  font-family: Khand;
+  font-weight: 600;
+  font-size: 14px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+
+/* Spacing between items */
+.navList li {
+  position: relative;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+
+.careersLabel { margin-left: 4px; }
+
+
+/* Remove any li-wide underline (if present elsewhere) */
+.navList li::after { content: none; }
+
+
+/* Container for icon + label */
+.navLink {
+  display: inline-flex;          /* icon + text aligned with flex */
+  align-items: center;           /* vertical centering */
+  gap: 8px;                      /* spacing between icon and label */
+  line-height: 1;                /* tighter line box */
+  padding: 6px 10px;             /* click target */
+}
+
+
+/* Text wrapper that receives the animated underline */
+.navText {
+  position: relative;
+  display: inline-block;         /* gives ::after a measurable width */
+}
+
+
+/* Underline bar, initially collapsed */
+.navText::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;                      /* lets underline match the text run width */
+  bottom: -6px;                  /* visual gap below text */
+  height: 3px;                   /* thickness */
+  background: orange;
+  transform: scaleX(0);          /* collapsed */
+  transform-origin: left;        /* grow from left edge */
+  transition: transform .3s ease; /* animate growth */
+}
+
+
+/* Grow underline on hover/focus */
+.navLink:hover .navText::after,
+.navLink:focus-visible .navText::after,
+.navList li:hover .navText::after {
+  transform: scaleX(1);
+}
+
+
+/* Icons (SVG or <img>) */
+.icon { width: 18px; height: 18px; display: block; object-fit: contain; }
+.iconLg, .icon--lg { width: 20px; height: 20px; }
+
+
+/* Dropdown (desktop) */
+.dropdownMenu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: #fff;
+  border-radius: 6px;
+  list-style: none;
+  padding: 0;
+  margin-top: 8px;
+  z-index: 10;
+  min-width: 120px;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(-6px);
+  transition: opacity .2s ease, transform .2s ease;
+}
+.dropdownOpen .dropdownMenu {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+.extra{
+  overflow-y: scroll;
+  max-height: 150px;
+}
+.alignRight { left: auto !important; right: 0 !important; }
+
+
+.dropdownMenu li {
+  padding: 10px 10px;
+  margin: 0;
+  white-space: nowrap;
+  color: #000;
+  cursor: pointer;
+  transition: background-color .2s;
+}
+.dropdownMenu li:hover,
+.dropdownMenu li:focus {
+  background: #e4e7f3;
+  border-radius: 6px;
+}
+
+
+/* Caret arrow */
+.arrow {
+  display: inline-block;
+  font-size: 0.6rem;
+  margin-left: 4px;
+  transition: transform .2s ease;
+  user-select: none;
+  line-height: 1;
+}
+.dropdownOpen .arrow { transform: rotate(180deg); }
+
+
+/* Hamburger button (hidden on desktop) */
+.menuBtn {
+  display: none;
+  margin-left: auto;
+  background: transparent;
+  color: var(--nav-text);
+  border: 1px solid rgba(255,255,255,.18);
+  padding: 8px 10px;
+  border-radius: 10px;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.menuIcon { width: 22px; height: 22px; display: block; }
+.menuLabel { font-weight: 800; }
+
+
+/* Mobile panel (hidden by default) */
+.mobilePanel {
+  display: none;
+  background: var(--nav-bg);
+  color: var(--nav-text);
+  border-radius: 10px;
+  margin-top: 10px;
+  padding: 8px;
+}
+.mobileOpen .mobilePanel { display: block; }
+
+
+.mobileList {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.mobileItem { padding: 6px 4px; }
+.mobileGroupHead {
+  margin-top: 6px;
+  padding: 8px 4px 0;
+  font-weight: 900;
+  letter-spacing: .02em;
+}
+.mobileSubItem {
+  padding: 8px 8px;
+  border-radius: 8px;
+  background: rgba(255,255,255,.06);
+}
+
+
+/* Breakpoint: switch to hamburger */
+@media (max-width: 920px) {
+  .navList { display: none; }            /* hide desktop row */
+  .menuBtn { display: inline-flex; }     /* show hamburger */
+}
+
+
+/* Small screens: tighten CTA sizing */
+@media (max-width: 640px) {
+  .ctaRow { gap: 8px; }
+  .ctaBtn { padding: 8px 10px; border-radius: 8px; }
+  .ctaIcon { width: 16px; height: 16px; }
+}
+
+
+/* === New styles for Language dropdown trigger === */
+
+
+/* Generic container for dropdown triggers */
+.dropdownContainer {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+
+/* Button reset so custom styles apply cleanly */
+.btnReset {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+
+/* Black language trigger with white text and icon (icons use currentColor) */
+.langBtn {
+  display: inline-flex;
+  align-items: center;
+  background: #0b0b0b;
+  color: #ffffff;                 /* icon inherits via currentColor */
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 10px;
+  padding: 6px 8px;
+  transition: background .18s ease, box-shadow .18s ease, transform .12s ease, border-color .18s ease;
+}
+
+.langBtn:hover {
+  background: #111111;
+  border-color: rgba(255,255,255,.22);
+}
+
+.langBtn:active {
+  transform: translateY(0);
+}
+
+.langBtn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(255,255,255,.22);
+}
+
+/* Keep inner spacing consistent with nav items */
+.langBtn .navLink {
+  padding: 4px 6px;
+  gap: 8px;
+}
+
+/* Label spacing akin to Careers */
+.langLabel { margin-left: 4px; }
+
+

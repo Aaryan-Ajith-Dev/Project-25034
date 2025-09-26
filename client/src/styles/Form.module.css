@@ -1,0 +1,284 @@
+/* src/styles/Form.module.css */
+
+/* Global font */
+*,
+*::before,
+*::after {
+  font-family: 'Khand', -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* Layout container */
+.container {
+  --bg: #e4e7f3;
+  --card: #ffffff;
+  --ink: #0f172a;
+  --muted: #64748b;
+  --primary: var(--nav-bg);
+  --primary-600: #1d4ed8;
+  --accent: #f97316;
+  --ring: #e2e8f0;
+  --border: #e5e7eb;
+  --site-sz: 92vw;
+
+  width: var(--site-sz);
+  background: var(--bg);
+  color: var(--ink);
+  margin: 0 auto;
+  padding: 8px 24px;
+}
+
+/* Shell grid: form + right images */
+.shell {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+}
+@media (min-width: 1024px) {
+  .shell {
+    grid-template-columns: 2fr 1fr;  /* keep images; never hidden */
+    align-items: start;
+  }
+}
+
+.title {
+  font-weight: 800;
+  font-size: 28px;
+  margin: 2px 0 14px;
+}
+
+/* Left column */
+.left { width: 100%; }
+
+/* Upload card */
+.uploadCard {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 18px;
+}
+.uploadHead {
+  background: var(--card);
+  color: var(--ink);
+  font-weight: 700;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--ring);
+}
+.uploadBody {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  flex-wrap: wrap;
+}
+.hint { color: var(--muted); font-size: 12px; }
+.fileInput {
+  appearance: none;
+  border: 1px dashed var(--ring);
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fafafa;
+  color: var(--muted);
+}
+
+/* Form sections */
+.form {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 18px;
+  width: 100%;
+}
+.section {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  width: 100%;
+  box-shadow: 0 1px 0 rgba(2, 6, 23, 0.02);
+}
+.legend {
+  font-weight: 700;
+  color: var(--primary);
+  padding: 0 6px;
+  margin-bottom: 10px;
+}
+
+/* Fields */
+.row {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  align-items: start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+@media (max-width: 640px) {
+  .row { grid-template-columns: 1fr; }
+}
+.label {
+  color: var(--ink);
+  font-weight: 600;
+  padding-top: 8px;
+}
+
+/* Inputs */
+.input, .textarea {
+  width: 100%;
+  border: 1px solid var(--ring);
+  background: #fff;
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: var(--ink);
+  outline: none;
+  transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+.input::placeholder, .textarea::placeholder { color: var(--muted); opacity: .9; }
+.input:focus, .textarea:focus {
+  border-color: var(--primary-600);
+  box-shadow: 0 0 0 3px rgba(29,78,216,.12);
+  background: #fcfdff;
+}
+.textarea { min-height: 96px; resize: vertical; }
+
+/* Input with end icon */
+.inputWrap { position: relative; width: 100%; }
+.inputIconEnd {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  border: none;
+  background-color: white;
+}
+.inputIconEnd:hover { color: var(--primary-600); }
+
+/* Disabled date field style */
+.disabledField { opacity: 0.55; pointer-events: none; }
+
+/* Repeating group cards */
+.card {
+  background: #fafbff;
+  border: 1px solid var(--ring);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+.cardActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+/* Radio rows */
+.radioRow { display: flex; align-items: center; gap: 16px; }
+
+/* Actions */
+.addRow, .submitRow {
+  display: flex;
+  justify-content: flex-start;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+/* Buttons */
+.buttonPrimary {
+  appearance: none;
+  background: var(--primary);
+  color: #fff;
+  border: 1px solid var(--primary);
+  border-radius: 12px;
+  padding: 10px 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .15s ease, transform .05s ease, box-shadow .15s ease;
+}
+.buttonPrimary:hover { background: var(--primary-600); box-shadow: 0 6px 14px rgba(29,78,216,.18); }
+.buttonPrimary:active { transform: translateY(1px); }
+
+.buttonGhost {
+  appearance: none;
+  background: #fff;
+  color: var(--primary);
+  border: 1px solid var(--primary);
+  border-radius: 12px;
+  padding: 8px 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease, box-shadow .15s ease;
+}
+.buttonGhost:hover { background: rgba(29,78,216,.06); box-shadow: 0 4px 10px rgba(2,6,23,.06); }
+
+/* Right rail: images always visible, responsive */
+.right {
+  width: 100%;
+  display: grid;
+  gap: 16px;
+}
+@media (min-width: 1024px) {
+  .right {
+    position: sticky;   /* keep images in view while scrolling on desktop */
+    top: 12px;
+    align-self: start;
+  }
+}
+.rightCard {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  box-shadow: 0 1px 0 rgba(2,6,23,.02);
+}
+.preview { width: 100%; height: auto; border-radius: 10px; display: block; }
+
+/* Utility: hide file input */
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  border: 0;
+  white-space: nowrap;
+}
+
+/* Inline field hint/error */
+.note { margin-top: 6px; color: var(--muted); font-size: 12px; }
+.errorText { margin-top: 6px; color: #b91c1c; font-size: 12px; }
+.invalid {
+  border-color: #b91c1c !important;
+  box-shadow: 0 0 0 3px rgba(185,28,28,0.12) !important;
+}
+
+/* Location icon */
+.icon { width: 18px; height: 18px; color: #0f172a; cursor: pointer; }
+.skeletonLine {
+  display: inline-block;
+  height: 1em;
+  background: linear-gradient(90deg, #eee 25%, #f5f5f5 37%, #eee 63%);
+  background-size: 400% 100%;
+  border-radius: 4px;
+  animation: shimmer 1.2s ease-in-out infinite;
+}
+@keyframes shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: 0 0; }
+}
+
+
+/* Responsive tweaks */
+@media (max-width: 640px) {
+  .container { padding: 8px 14px; }
+  .section { padding: 12px; }
+  .uploadBody { gap: 10px; }
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}

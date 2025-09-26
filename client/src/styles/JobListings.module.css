@@ -1,0 +1,253 @@
+/* src/pages/JobListings.module.css */
+:root {
+  --bg: #f6f7fb;
+  --card: #ffffff;
+  --ink: #0f172a;
+  --muted: #64748b;
+  --ring: #e2e8f0;
+  --border: #e5e7eb;
+  --primary: #113a8a;
+  --primary-600: #1d4ed8;
+  --accent: #f97316;
+  --site-sz: 92vw;
+}
+
+*,
+*::before,
+*::after {
+  font-family: 'Khand', -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+.wrap {
+  width: 92vw;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 3fr; /* 1/4 | 3/4 */
+  gap: 16px;
+  padding: 16px 20px;
+  color: var(--ink);
+  background: #e4e7f3;
+}
+
+@media (max-width: 1024px) {
+  .wrap { grid-template-columns: 1fr; }
+}
+
+.left {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  height: 70vh;
+}
+
+.toolbar {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  padding: 10px;
+}
+
+/* Stack input then switch (unchanged) */
+.toolbarStack {
+  grid-template-columns: 1fr;
+  grid-auto-flow: row;
+  row-gap: 8px;
+  align-items: start;
+}
+
+.search {
+  width: 100%;
+  border: 1px solid var(--ring);
+  border-radius: 10px;
+  padding: 10px 12px;
+  outline: none;
+}
+.search:focus {
+  border-color: var(--primary-600);
+  box-shadow: 0 0 0 3px rgba(29,78,216,.12);
+  background: #fcfdff;
+}
+
+.uploadBtn {
+  background: white;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.hidden { display: none; }
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 8px;
+  overflow: auto;
+}
+
+.item {
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+  margin-bottom: 8px;
+  background: #fff;
+  transition: border-color .12s ease, background .12s ease;
+}
+.item:hover { border-color: var(--ring); background: #fafbff; }
+.active { border-color: var(--primary-600); background: #eef4ff; }
+
+.itemTitle { font-weight: 800; }
+.itemMeta { color: var(--muted); font-size: 13px; margin-top: 2px; }
+.badge {
+  display: inline-block;
+  margin-top: 6px;
+  background: rgba(17,58,138,.08);
+  color: var(--primary);
+  border: 1px solid rgba(17,58,138,.25);
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.info, .hint {
+  padding: 12px;
+  color: var(--muted);
+}
+
+.right {
+  background: transparent;
+  min-height: 70vh;
+}
+
+.placeholder {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px;
+  color: var(--muted);
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.header { border-bottom: 1px solid var(--ring); padding-bottom: 8px; margin-bottom: 12px; }
+.title { font-weight: 900; font-size: 22px; margin: 0 0 4px; }
+.meta { color: var(--muted); display: flex; gap: 8px; align-items: center; }
+.company { color: var(--ink); font-weight: 700; }
+.dot { color: var(--muted); }
+
+.tags { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.tag {
+  background: #f1f5ff;
+  color: var(--primary);
+  border: 1px solid #dbe6ff;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.section { margin-top: 14px; }
+.secHead { font-weight: 800; font-size: 16px; margin: 0 0 6px; }
+.desc { white-space: pre-wrap; line-height: 1.5; }
+
+.link {
+  color: var(--primary-600);
+  text-decoration: none;
+  border-bottom: 1px dashed var(--primary-600);
+}
+.link:hover { color: var(--primary); border-bottom-style: solid; }
+
+.kvWrap {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 8px 14px;
+}
+.kv { display: contents; }
+.k { color: var(--muted); font-size: 12px; }
+.v { font-size: 12px; color: var(--ink); }
+
+/* Compact switch styles */
+
+
+/* Right-align the switch under the search */
+.switchRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  justify-self: end;   /* was start */
+  text-align: right;   /* optional, keeps label aligned visually */
+}
+
+.switchBtn {
+  appearance: none; background: transparent; border: 0; padding: 0; margin: 0;
+  cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+}
+.switchTrack {
+  width: 36px; height: 20px; border-radius: 999px;
+  background: var(--ring); border: 1px solid var(--ring);
+  position: relative; transition: background .12s ease, border-color .12s ease;
+}
+.switchThumb {
+  width: 16px; height: 16px; border-radius: 999px; background: #fff;
+  position: absolute; top: 1px; left: 1px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.18);
+  transition: left .12s ease;
+}
+.switchBtn:focus-visible .switchTrack { box-shadow: 0 0 0 3px rgba(29,78,216,.12); }
+.switchText { color: var(--muted); font-size: 13px; font-weight: 700; }
+
+/* ON state: make it blue */
+.switchBtn[aria-checked="true"] .switchTrack {
+  background: #134069;
+  border-color: #134069;
+}
+.switchBtn[aria-checked="true"] .switchThumb {
+  left: calc(100% - 17px);
+  box-shadow: 0 0 0 1px rgba(255,255,255,.6), 0 1px 2px rgba(0,0,0,.25);
+}
+
+/* Optional hover refinement */
+.switchBtn[aria-checked="true"]:hover .switchTrack {
+  filter: brightness(1.05);
+}
+
+/* Search icon */
+.icon {
+  width: 18px;
+  height: 18px;
+  display: block;
+  pointer-events: none;
+}
+
+/* Search input with internal icon button */
+.searchWrap { position: relative; }
+.search { padding-right: 42px; }
+
+/* Icon button sits inside the input on the right */
+.iconBtn {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.iconBtn:hover { filter: brightness(1.05); }
