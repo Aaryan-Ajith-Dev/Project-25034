@@ -55,7 +55,7 @@ def user_to_text(user) -> str:
     ]
     return " ".join(parts)
 
-def likelihood(xt, job_embeddings, tau=0.8):
+def likelihood(xt, job_embeddings, tau=2.0):
     """
     Compute likelihood p(xt | x) for all candidate jobs x.
     xt: job embedding of the job the user clicked

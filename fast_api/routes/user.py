@@ -2,7 +2,7 @@
 from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel, EmailStr
 from typing import List, Dict, Any
-from model import update_prior
+from model import get_prior, update_prior
 from services.recommendation_service import get_recommendations_for_user
 from models.user import UserOut, UserUpdate
 from models.job import Job
@@ -145,14 +145,14 @@ async def update_priorities(
     await db.users.update_one({"email": current_email}, {"$set": {"prior": new_prior}})
     return {"message": "Priorities updated successfully"}
 
-# @router.get("/recommendations/reset", response_model=dict)
-# async def reset_recommendations(current_email: str = Depends(get_current_user_email)):
-#     """Reset user recommendations to initial state"""
-#     user = await db.users.find_one({"email": current_email})
-#     if not user:
-#         raise HTTPException(status_code=404, detail="User not found")
+@router.get("/recommendations/reset", response_model=dict)
+async def reset_recommendations(current_email: str = Depends(get_current_user_email)):
+    """Reset user recommendations to initial state"""
+    user = await db.users.find_one({"email": current_email})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
 
-#     # Reset the user's prior distribution
-#     new_prior = get_prior()
-#     await db.users.update_one({"email": current_email}, {"$set": {"prior": {}}})
-#     return {"message": "Recommendations reset successfully"}
+    # Reset the user's prior distribution
+    new_prior = await get_prior(db, user["embedding"]) if "embedding" in user else {}
+    await db.users.update_one({"email": current_email}, {"$set": {"prior": new_prior}})
+    return {"message": "Recommendations reset successfully"}
