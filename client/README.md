@@ -1,119 +1,139 @@
 # PM Internship Portal - Frontend
 
-A multilingual React frontend designed to make internship discovery accessible to youth across India, including first-generation learners from rural areas, tribal districts, and urban communities with limited digital exposure.
+A multilingual React (Vite) frontend for internships and applications portal designed to connect Indian youth with relevant opportunities. Features comprehensive authentication, dynamic navigation, job search and listing, applied jobs tracking, and client-side internationalization for both UI and API-sourced content.
 
 ## Overview
 
-The PM Internship Scheme receives applications from diverse backgrounds across India. This portal addresses the challenge of helping candidates with varying levels of digital literacy find relevant internship opportunities through a simple, intuitive interface that works across devices and supports multiple Indian languages.
+Built specifically for the PM Internship Scheme to serve candidates from diverse backgrounds including rural areas, tribal districts, urban slums, and remote colleges. The portal addresses the challenge of helping first-generation learners with limited digital exposure find relevant internships among hundreds of available opportunities.
+
+## Core Features
+
+- **Comprehensive Authentication System**: Secure login/signup with cross-tab session synchronization
+- **Indian Language Support**: Full multilingual interface with live language switching for Hindi, Bengali, Telugu, Marathi, Tamil, Gujarati, Urdu, Kannada, Odia, Malayalam, Punjabi, and other regional languages
+- **Dynamic Navigation**: Context-aware menus that adapt based on user authentication status
+- **Advanced Job Management**: Paginated listings, keyword filtering, detailed job views, and application tracking
+- **Profile Management**: Youth registration and comprehensive profile/preferences forms with validation and optional resume parsing
+- **Smart Recommendations**: AI-powered suggestion engine showing 3-5 most relevant internship matches
+- **Accessibility First**: Keyboard navigation, ARIA compliance, screen reader support, and assistive technology compatibility
+- **Mobile-Optimized**: Responsive design optimized for smartphones and low-bandwidth connections
 
 ## Key Features
 
-- **Indian Language Support**: Comprehensive support for major Indian languages including Hindi, Bengali, Tamil, Telugu, Marathi, Gujarati, Kannada, Malayalam, Punjabi, and others
-- **Mobile-First Design**: Optimized for smartphones and low-bandwidth connections common in rural and remote areas
-- **Simple User Experience**: Minimal text interface with visual cues designed for users with limited digital exposure
-- **Smart Recommendations**: Lightweight recommendation system that suggests 3-5 most relevant internships based on candidate profile
-- **Accessible Interface**: Built with accessibility standards to support users with varying technical skills
-- **Offline-Ready**: Progressive Web App capabilities for areas with intermittent connectivity
-
-## Target Users
-
-- **First-generation learners** with limited digital exposure
-- **Rural youth** accessing opportunities through common service centers
-- **Students from tribal districts** and remote colleges
-- **Urban candidates** from diverse socioeconomic backgrounds
-- **Mobile-first users** with basic smartphones
-
-## Design Philosophy
-
-### Simplicity First
-- Clean, uncluttered interface with minimal cognitive load
-- Visual icons and graphics to reduce reliance on text
-- Step-by-step guided flows for complex processes
-
-### Cultural Sensitivity
-- Regional language support with culturally appropriate content
-- Location-aware recommendations considering local opportunities
-- Familiar UI patterns that resonate with Indian users
-
-### Technical Accessibility
-- Works on basic Android devices and low-end smartphones
-- Optimized for 2G/3G networks
-- Progressive enhancement for better devices
+- **Multilingual UI and Data**: Client-side batch translation of labels and all job fields with caching and live language switching across major Indian languages
+- **Secure Authentication**: Login/signup system with token management and cross-tab synchronization
+- **Conditional Navigation**: Dynamic menu system where career options appear based on authentication status
+- **Comprehensive Forms**: Youth registration and profile management with validation and optional resume parsing capabilities
+- **Advanced Job Discovery**: Paginated job listings with keyword filtering, detailed views, and application tracking
+- **Applied Jobs Management**: Dedicated interface for viewing and managing job applications with filtering capabilities
+- **Full Accessibility**: Keyboard navigable menus, ARIA attributes, escape handlers, and assistive technology support
+- **Mobile-First Design**: Touch-friendly interface optimized for entry-level smartphones and low-bandwidth connections
+- **Smart Recommendations**: Rule-based recommendation engine suggesting 3-5 personalized internship matches based on profile, education, and preferences
 
 ## Tech Stack
 
-- **Frontend Framework**: React with Vite for fast development and optimized builds
-- **Styling**: CSS Modules for component-scoped, maintainable styles
-- **Icons & Graphics**: Heroicons with custom Indian-context iconography
-- **Internationalization**: Real-time translation system supporting Indian languages
-- **Mobile Optimization**: Responsive design with touch-first interactions
-- **Performance**: Lazy loading and code splitting for faster load times
+- **Frontend Framework**: React with Vite for fast, lightweight builds
+- **Styling**: CSS Modules for maintainable, mobile-optimized styling
+- **Translation**: Client-side translation system supporting Indian languages
+- **State Management**: Browser storage with offline capability
+- **Icons & UI**: Heroicons with culturally appropriate visual elements
+- **Performance**: Optimized for 2G/3G networks and entry-level smartphones
 
-## Project Structure
+## Application Architecture
 
-```
-src/
-├── components/
-│   ├── Navbar.jsx              # Multi-language navigation
-│   ├── LanguageSelector.jsx    # Indian language switcher
-│   └── RecommendationCard.jsx  # Internship suggestion cards
-├── pages/
-│   ├── Login.jsx              # Simple authentication
-│   ├── Registration.jsx       # Youth onboarding
-│   ├── Profile.jsx           # Candidate profile management
-│   ├── Internships.jsx       # Browse all opportunities
-│   ├── Recommendations.jsx    # AI-suggested matches
-│   └── Applications.jsx      # Track applied internships
-├── styles/
-│   ├── mobile-first.css      # Mobile-optimized styles
-│   ├── accessibility.css     # WCAG compliance
-│   └── indian-themes.css     # Culturally appropriate themes
-├── utils/
-│   ├── translation.js        # Indian language support
-│   ├── recommendations.js    # Lightweight matching logic
-│   └── accessibility.js      # Screen reader support
-└── assets/
-    ├── icons/               # Indian context icons
-    └── illustrations/       # Cultural graphics
-```
+### Core Components
 
-## Language Support
+#### Authentication System
+- **Login/Signup Flow**: Secure authentication with multilingual labels and validation
+- **Session Management**: Persistent login sessions with cross-tab synchronization
+- **User Profile Integration**: Dynamic user information display in navigation
 
-### Supported Indian Languages
-- **Hindi** (हिन्दी) - Primary interface language
-- **Bengali** (বাংলা) - Eastern India
-- **Tamil** (தமிழ்) - Tamil Nadu, Puducherry
-- **Telugu** (తెలుగు) - Andhra Pradesh, Telangana
-- **Marathi** (मराठी) - Maharashtra, Goa
-- **Gujarati** (ગુજરાતી) - Gujarat, Dadra and Nagar Haveli
-- **Kannada** (ಕನ್ನಡ) - Karnataka
-- **Malayalam** (മലയാളം) - Kerala, Lakshadweep
-- **Punjabi** (ਪੰਜਾਬੀ) - Punjab, Haryana
-- **Odia** (ଓଡ଼ିଆ) - Odisha
-- **Assamese** (অসমীয়া) - Assam
-- **Urdu** (اردو) - Multiple states
+#### Navigation & UI
+- **Dynamic Navbar**: Language dropdown, authentication buttons, and conditional career menu
+- **Responsive Design**: Mobile-optimized interface with touch-friendly interactions
+- **Accessibility Features**: Keyboard navigation, ARIA labels, and escape handlers
 
-### Translation Features
-- **Real-time switching** between languages without page reload
-- **Content adaptation** for regional cultural context
-- **Automatic detection** of user's preferred language from browser/location
-- **Fallback support** to Hindi/English for unsupported content
+#### Job Management
+- **Job Listings**: Paginated display with search toolbar and compact pagination controls
+- **Filtering System**: Keyword-based filtering with debounced search functionality
+- **Detail Views**: Comprehensive job information with application links and compensation details
+- **Application Tracking**: Applied jobs interface with status management
+
+#### Internationalization
+- **Live Translation**: Real-time language switching without page refresh
+- **Content Caching**: Optimized translation caching to avoid redundant API calls
+- **Comprehensive Coverage**: Both UI elements and dynamic API content translation
+
+### Page Components
+
+#### Login.jsx
+- **Multilingual Interface**: Translated labels, messages, and validation feedback
+- **Authentication Flow**: Token persistence and event broadcasting on successful login
+- **Form Validation**: Client-side validation for required fields with user-friendly error messages
+
+#### YouthRegistration.jsx  
+- **Registration Process**: Comprehensive signup form with multilingual hints and feedback
+- **Profile Creation**: Initial profile setup with education, skills, and preference capture
+- **Success Handling**: Token storage and automatic redirection after successful registration
+
+#### Form.jsx (Profile Management)
+- **Authentication Gate**: Protected access requiring valid authentication
+- **Profile Integration**: Handles profile data loading and management
+- **Structured Input**: Education, work experience, skills, and voluntary work sections
+- **Resume Parsing**: Optional resume upload and parsing functionality
+- **Validation System**: Comprehensive form validation with real-time feedback
+
+#### JobListings.jsx
+- **Data Management**: Handles job data with optional keyword filtering
+- **Pagination**: Client-side pagination with configurable page sizes (default 100)
+- **Search Interface**: Search toolbar with debounced input for performance
+- **Translation Integration**: Full i18n support for both UI and job content
+- **Detail Display**: Expandable job details with description, tags, and compensation
+- **Application Management**: Apply/withdraw functionality with local state persistence
+
+#### AppliedJobs.jsx
+- **Application Tracking**: Dedicated view for user's applied jobs
+- **Consistent Interface**: Mirrors JobListings UI with identical translation behavior
+- **Filtering Support**: Search and filter applied jobs functionality
+- **Status Management**: Application status tracking and updates
+
+## Accessibility & Inclusion
+
+- **Language Accessibility**: Real-time translation of all content
+- **Digital Literacy Support**: Step-by-step guidance and help tooltips
+- **Keyboard Navigation**: Full functionality without mouse/touch
+- **Screen Reader Support**: Proper ARIA labels and semantic structure
+- **High Contrast Mode**: Better visibility for users with visual impairments
+- **Simplified Interactions**: One-click actions and minimal form fields
+
+## Mobile Optimization
+
+- **Touch-Friendly**: Large touch targets and thumb-friendly navigation
+- **Offline Support**: Key features work without internet connection
+- **Data Conservation**: Optimized images and minimal data usage
+- **Battery Efficient**: Lightweight animations and efficient rendering
+- **Cross-Platform**: Works on Android, iOS, and KaiOS devices
+
+## Regional Adaptation
+
+- **Cultural Sensitivity**: Design elements appropriate for Indian users
+- **Local Context**: Location-based customization and regional preferences
+- **Government Integration**: Seamless connection with PM Internship Scheme backend
+- **Vernacular Content**: Native language content beyond translation
+- **Regional Partnerships**: Integration with local employment exchanges and colleges
 
 ## Installation and Setup
 
 ### Prerequisites
-- Node.js 18+ (works on basic development machines)
-- Modern web browser (Chrome 70+, Firefox 65+, Safari 12+)
+- Node.js 18+ and npm or pnpm/yarn
+- Modern web browser with JavaScript enabled
 
-### Environment Setup
-Create `.env` file:
+### Environment Configuration
+Create a `.env` file:
 ```env
-VITE_API_BASE=https://your-api-domain.gov.in
-VITE_TRANSLATION_ENABLED=true
-VITE_MOBILE_FIRST=true
+# Add any required environment variables here
 ```
 
-### Quick Start
+### Development Setup
 ```bash
 # Install dependencies
 npm install
@@ -121,120 +141,86 @@ npm install
 # Start development server
 npm run dev
 
-# Build for production
-npm run build
 
-# Deploy build
-npm run preview
+## Project Structure
+
+```
+src/
+├── components/
+│   ├── Navbar.jsx              # Multi-language navigation with conditional menus
+│   ├── LanguageSelector.jsx    # Indian language switcher component
+│   └── RecommendationCard.jsx  # Internship suggestion cards
+├── pages/
+│   ├── Login.jsx              # Authentication with multilingual support
+│   ├── YouthRegistration.jsx  # User registration and profile creation
+│   ├── Form.jsx               # Profile management and preferences update
+│   ├── JobListings.jsx        # Job search, filtering, and detailed views
+│   └── AppliedJobs.jsx        # Application tracking and management
+├── styles/
+│   ├── Navbar.module.css      # Navigation styling with responsive design
+│   ├── Auth.module.css        # Authentication forms styling
+│   ├── Form.module.css        # Profile forms and validation styling
+│   ├── JobListings.module.css # Job display and pagination styling
+│   └── Accessibility.module.css # Accessibility enhancements
+├── lib/
+│   ├── translateClient.js     # Translation batch processing utility
+│   └── recommendation.js      # Client-side recommendation engine
+└── assets/
+    ├── icons/                 # Heroicons and cultural icons
+    ├── images/               # Optimized images and logos
+    ├── MCA.svg               # Government branding assets
+    └── pm_internship_logo_eng.svg # Portal logo
 ```
 
-## User Journey
+**Technical Notes:**
+- CSS Modules used for encapsulated, maintainable styling
+- Icons imported from `@heroicons/react/24/outline`
+- Translation client handles batch processing of content
+- Assets optimized for low-bandwidth connections
 
-### 1. Language Selection
-- Automatic detection of user's language preference
-- Easy language switcher in regional scripts
-- Visual language selector for low-literacy users
+## Performance Optimizations
 
-### 2. Simple Registration
-- Minimal required fields (Name, Education, Location, Interests)
-- Visual progress indicators
-- Mobile number verification for rural users
+- **Bundle Size**: < 300KB gzipped for fast loading on 2G networks
+- **Image Optimization**: WebP format with fallbacks, lazy loading
+- **Caching Strategy**: Aggressive caching for repeat visits
+- **Code Splitting**: Load only required features on demand
+- **Compression**: Brotli/Gzip compression for all assets
 
-### 3. Profile Building
-- Step-by-step guided process
-- Optional fields with helpful tooltips
-- Visual skill selection interface
+## Browser Support
 
-### 4. Smart Recommendations
-- 3-5 carefully curated suggestions
-- Clear internship cards with key information
-- Simple "Interested" / "Not for me" feedback
-
-### 5. Application Process
-- Streamlined application flow
-- Progress tracking with visual indicators
-- SMS/WhatsApp notifications for updates
-
-## Mobile Optimization
-
-### Touch-First Design
-- Large, finger-friendly buttons (minimum 44px touch targets)
-- Swipe gestures for navigation
-- Pull-to-refresh functionality
-
-### Network Efficiency
-- Compressed images and assets
-- Lazy loading for non-critical content
-- Offline capability for basic browsing
-
-### Device Compatibility
-- Works on devices with 1GB RAM
-- Optimized for screen sizes from 320px to 1920px
-- Battery-efficient interactions
-
-## Accessibility Features
-
-### Digital Literacy Support
-- Visual cues for all actions
-- Confirmation dialogs for important actions
-- Undo functionality where appropriate
-
-### Technical Accessibility
-- Screen reader compatibility
-- High contrast mode for visual impairments
-- Keyboard navigation for all functions
-- ARIA labels in regional languages
-
-### Inclusive Design
-- Simple language and clear instructions
-- Cultural sensitivity in imagery and content
-- Support for right-to-left text (Urdu)
-
-## Deployment Considerations
-
-### Government Infrastructure
-- Compatible with government hosting environments
-- Security compliance for sensitive user data
-- Integration capabilities with existing PM Internship systems
-
-### Scalability
-- Handles high concurrent users during application seasons
-- State-wise load balancing for regional traffic
-- CDN optimization for faster loading across India
-
-### Maintenance
-- Minimal server dependencies for easy updates
-- Automated deployment pipelines
-- Monitoring for performance across different regions
-
-## Performance Metrics
-
-- **Load Time**: Under 3 seconds on 3G networks
-- **Bundle Size**: Less than 1MB for initial load
-- **Accessibility**: WCAG 2.1 AA compliant
-- **Language Coverage**: 12+ Indian languages supported
-- **Mobile Score**: 90+ on Google PageSpeed Insights
+- **Modern Browsers**: Chrome, Firefox, Safari, Edge (last 2 versions)
+- **Mobile Browsers**: Chrome Mobile, Safari iOS, Samsung Internet
+- **Legacy Support**: Internet Explorer 11 with polyfills
+- **Feature Phones**: Basic functionality on KaiOS browsers
 
 ## Security & Privacy
 
-- **Data Protection**: Minimal data collection with user consent
-- **Regional Compliance**: Adherence to Indian data protection laws
-- **Secure Communication**: HTTPS encryption for all data transfer
-- **Privacy by Design**: No tracking of personal browsing behavior
+- **Data Minimization**: Collect only essential user information
+- **Local Storage**: Sensitive data kept client-side when possible
+- **HTTPS Only**: Secure communication with backend services
+- **Privacy First**: Clear data usage policies and user consent
+- **Audit Trail**: Transparent logging of user interactions
+
+
+### Configuration
+- Set appropriate `VITE_API_BASE` for production environment
+- Enable compression and caching headers
+- Configure CSP headers for security
+- Set up monitoring and analytics
+
+## Future Roadmap
+
+- **Voice Interface**: Support for voice-based navigation in regional languages
+- **Offline Mode**: Full offline functionality with sync capabilities
+- **WhatsApp Integration**: Application updates and notifications via WhatsApp
+- **Video Guidance**: Tutorial videos in regional languages
+- **AI Enhancement**: More sophisticated recommendation algorithms
+- **Government Integration**: Direct connection with other skill development schemes
 
 ## Contributing
 
-This project welcomes contributions that improve accessibility and language support for Indian users. Priority areas include:
-
-- Additional regional language support
-- Enhanced mobile optimizations
-- Improved accessibility features
-- Cultural adaptation for different regions
+This project welcomes contributions that improve accessibility, add regional language support, or enhance the user experience for Indian youth from diverse backgrounds.
 
 ## License
 
-[Government/Public License - Specify as per PM Internship Scheme guidelines]
-
----
-
-**Built for Digital India Initiative** - Empowering youth across India with accessible technology solutions.
+[Government of India License - specify appropriate license]
