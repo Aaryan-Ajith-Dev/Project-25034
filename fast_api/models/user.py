@@ -30,6 +30,7 @@ class User(BaseModel):
     gender: Optional[str] = "prefer not to say"
     disability: Optional[str] = "None"
     embedding: List[float] = None
+    history: List[str] = [] # stores job IDs of applied jobs
 
 class UserOut(BaseModel):
     name: str
@@ -47,3 +48,15 @@ class UserOut(BaseModel):
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
+
+class UserUpdate(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    location: Optional[str] = None
+    summary: Optional[str] = None
+    skills: Optional[str] = None
+    role: Optional[str] = None
+    education: Optional[List[Education]] = None
+    experience: Optional[List[Experience]] = None
+    gender: Optional[str] = None
+    disability: Optional[str] = None

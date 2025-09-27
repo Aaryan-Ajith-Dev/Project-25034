@@ -2,7 +2,7 @@ from fastapi import HTTPException
 from models.job import Job
 from model import get_embedding, job_to_text
 import numpy as np
-from typing import List
+from typing import List, Optional
 import re
 
 async def get_all_jobs(db):
@@ -52,7 +52,7 @@ async def delete_job(db, job_id: str):
     return {"msg": "Job deleted"}
 
 
-async def filter_jobs(db, search: List[str] | None):
+async def filter_jobs(db, search: Optional[List[str]]):
     # Normalize and sanitize terms
     terms = [t.strip() for t in (search or []) if t and t.strip()]
     

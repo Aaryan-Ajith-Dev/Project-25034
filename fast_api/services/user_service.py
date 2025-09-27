@@ -1,6 +1,6 @@
 from fastapi import HTTPException
 from .auth_service import get_password_hash, verify_password
-from models.user import User, UserLogin
+from models.user import User, UserLogin, UserUpdate
 from model import get_embedding, user_to_text
 import numpy as np
 
@@ -21,3 +21,59 @@ async def authenticate_user(db, user: UserLogin):
     if not db_user or not verify_password(user.password, db_user["password"]):
         raise HTTPException(status_code=403, detail="Invalid credentials")
     return db_user
+
+async def update_user(db, email: str, user_update: UserUpdate):
+    """Update user profile information"""
+    # Check if user exists
+    existing_user = await db.users.find_one({"email": email})
+    if not existing_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Create update dictionary with only provided fields
+    update_data = {}
+    update_dict = user_update.dict(exclude_unset=True)
+    
+    if update_dict:
+        update_data.update(update_dict)
+        
+        # If any profile data is being updated, regenerate embedding
+        profile_fields = ["name", "location", "summary", "skills", "role", "education", "experience"]
+        if any(field in update_dict for field in profile_fields):
+            # Create a temporary user object for embedding generation
+            temp_user_data = existing_user.copy()
+            temp_user_data.update(update_data)
+            
+            # Convert to User-like object for embedding
+            class TempUser:
+                def __init__(self, data):
+                    self.name = data.get("name", "")
+                    self.location = data.get("location", "")
+                    self.summary = data.get("summary", "")
+                    self.skills = data.get("skills", "")
+                    self.role = data.get("role", "")
+                    self.education = data.get("education", [])
+                    self.experience = data.get("experience", [])
+            
+            temp_user = TempUser(temp_user_data)
+            new_embedding = get_embedding(user_to_text(temp_user))
+            update_data["embedding"] = new_embedding.tolist()
+    
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    
+    # Update user in database
+    result = await db.users.update_one(
+        {"email": email},
+        {"$set": update_data}
+    )
+    
+    if result.modified_count == 0:
+        raise HTTPException(status_code=400, detail="No changes made")
+    
+    # Return updated user (excluding sensitive fields)
+    updated_user = await db.users.find_one(
+        {"email": email},
+        {"_id": 0, "password": 0, "embedding": 0}
+    )
+    
+    return updated_user
