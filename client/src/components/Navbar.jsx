@@ -75,6 +75,31 @@ async function translateBatch({ src, tgt, texts, signal }) {
   return data.translations;
 }
 
+// Tiny Base64URL -> JSON decoder for JWT payload
+function decodeJwt(token) {
+  try {
+    const payload = token.split(".")[1] || "";
+    const b64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const pad = "=".repeat((4 - (b64.length % 4)) % 4);
+    const json = atob(b64 + pad);
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+// Display name from JWT claims (prefers "name", fallback to the local part of "sub")
+function getDisplayName(token) {
+  const d = decodeJwt(token);
+  if (!d) return null;
+  if (typeof d.name === "string" && d.name.trim()) return d.name.trim();
+  if (typeof d.sub === "string" && d.sub.trim()) {
+    const email = d.sub.trim();
+    return email.includes("@") ? email.split("@")[0] : email;
+  }
+  return null;
+}
+
 // Language dropdown similar to Careers
 function LangDropdown({
   currentLang,
@@ -157,7 +182,7 @@ function LangDropdown({
       {open && (
         <ul
           id={menuId}
-          className={`${nav.dropdownMenu} ${nav.alignRight} ${nav.extra}` }
+          className={`${nav.dropdownMenu} ${nav.alignRight} ${nav.extra}`}
           ref={menuRef}
           role="menu"
         >
@@ -200,6 +225,14 @@ export default function Navbar() {
   const [dropdownOpen, setDropdownOpen] = useState(false); // Careers
   const [langOpen, setLangOpen] = useState(false); // Language
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const [userName, setUserName] = useState(() => {
+    const t = localStorage.getItem("token");
+    return t ? getDisplayName(t) : null;
+  });
+
+  // New: track token presence to gate Careers visibility
+  const [hasToken, setHasToken] = useState(() => !!localStorage.getItem("token"));
 
   const dropdownRef = useRef(null); // Careers menu UL
   const itemRef = useRef(null);     // Careers trigger
@@ -281,6 +314,38 @@ export default function Navbar() {
     };
   }, [currentLang]);
 
+  // React to token changes from other tabs/windows or app flows
+  useEffect(() => {
+    function onStorage(e) {
+      if (e.key === "token") {
+        const t = e.newValue;
+        setUserName(t ? getDisplayName(t) : null);
+        setHasToken(!!t);
+      }
+    }
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  // Also react to custom events if auth code dispatches them
+  useEffect(() => {
+    function onAuth(e) {
+      const t = (e?.detail && e.detail.token) || localStorage.getItem("token");
+      setUserName(t ? getDisplayName(t) : null);
+      setHasToken(!!t);
+    }
+    window.addEventListener("app:auth", onAuth);
+    return () => window.removeEventListener("app:auth", onAuth);
+  }, []);
+
+  function logout() {
+    localStorage.removeItem("token");
+    setUserName(null);
+    setHasToken(false);
+    window.location.reload();
+    navigate("/");
+  }
+
   // Close dropdowns on outside click
   useEffect(() => {
     function handleClickOutside(event) {
@@ -338,26 +403,47 @@ export default function Navbar() {
               menuRef={langMenuRef}
             />
 
-            <button
-              type="button"
-              className={`${nav.ctaBtn} ${nav.ctaPrimary}`}
-              onClick={(e) => e.preventDefault()}
-              aria-label={T.youth_reg}
-              title={T.youth_reg}
-            >
-              <UserPlusIcon className={nav.ctaIcon} aria-hidden="true" />
-              <span className={nav.ctaText}>{T.youth_reg}</span>
-            </button>
-            <button
-              type="button"
-              className={`${nav.ctaBtn} ${nav.ctaPrimary}`}
-              onClick={(e) => e.preventDefault()}
-              aria-label={T.login}
-              title={T.login}
-            >
-              <ArrowRightOnRectangleIcon className={nav.ctaIcon} aria-hidden="true" />
-              <span className={nav.ctaText}>{T.login}</span>
-            </button>
+            {userName ? (
+              <div className={nav.userChip} title={userName} aria-label={userName}>
+                <span className={nav.userAvatar} aria-hidden="true">
+                  {userName.slice(0, 1).toUpperCase()}
+                </span>
+                <span className={nav.userText}>{userName}</span>
+                <button
+                  type="button"
+                  className={nav.logoutBtn}
+                  onClick={logout}
+                  aria-label="Logout"
+                  title="Logout"
+                >
+                  Logout
+                </button>
+              </div>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className={`${nav.ctaBtn} ${nav.ctaPrimary}`}
+                  onClick={() => navigate("/youth-registration")}
+                  aria-label={T.youth_reg}
+                  title={T.youth_reg}
+                >
+                  <UserPlusIcon className={nav.ctaIcon} aria-hidden="true" />
+                  <span className={nav.ctaText}>{T.youth_reg}</span>
+                </button>
+
+                <button
+                  type="button"
+                  className={`${nav.ctaBtn} ${nav.ctaPrimary}`}
+                  onClick={() => navigate("/login")}
+                  aria-label={T.login}
+                  title={T.login}
+                >
+                  <ArrowRightOnRectangleIcon className={nav.ctaIcon} aria-hidden="true" />
+                  <span className={nav.ctaText}>{T.login}</span>
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -408,40 +494,47 @@ export default function Navbar() {
               </span>
             </li>
 
-            <li
-              className={`${nav.dropdownContainer} ${dropdownOpen ? nav.dropdownOpen : ""}`}
-              ref={itemRef}
-              tabIndex={0}
-              onClick={() => setDropdownOpen((v) => !v)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") setDropdownOpen((v) => !v);
-                if (e.key === "Escape") setDropdownOpen(false);
-              }}
-              aria-haspopup="true"
-              aria-expanded={dropdownOpen}
-            >
-              <ArrowTrendingUpIcon className={`${nav.icon} ${nav.iconLg}`} aria-hidden="true" />
-              <div className={`${nav.careersLabel} ${nav.navText}`}>{T.careers}</div> <span className={nav.arrow}>▼</span>
-              {dropdownOpen && (
-                <ul className={`${nav.dropdownMenu} ${nav.alignRight}`} ref={dropdownRef}>
-                  <li
-                    tabIndex={0}
-                    onClick={() => navigate("/job-listings")}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") navigate("/job-listings");
-                    }}
-                  >
-                    {T.job_listings}
-                  </li>
-                  <li tabIndex={-1}>{T.applied_jobs}</li>
-                  <li tabIndex={-1}>
-                    <Link to="/" style={{ color: "black", textDecoration: "none" }}>
-                      {T.update_prefs}
-                    </Link>
-                  </li>
-                </ul>
-              )}
-            </li>
+            {/* Careers visible only when token exists */}
+            {hasToken && (
+              <li
+                className={`${nav.dropdownContainer} ${dropdownOpen ? nav.dropdownOpen : ""}`}
+                ref={itemRef}
+                tabIndex={0}
+                onClick={() => setDropdownOpen((v) => !v)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") setDropdownOpen((v) => !v);
+                  if (e.key === "Escape") setDropdownOpen(false);
+                }}
+                aria-haspopup="true"
+                aria-expanded={dropdownOpen}
+              >
+                <ArrowTrendingUpIcon className={`${nav.icon} ${nav.iconLg}`} aria-hidden="true" />
+                <div className={`${nav.careersLabel} ${nav.navText}`}>{T.careers}</div> <span className={nav.arrow}>▼</span>
+                {dropdownOpen && (
+                  <ul className={`${nav.dropdownMenu} ${nav.alignRight}`} ref={dropdownRef}>
+                    <li
+                      tabIndex={0}
+                      onClick={() => navigate("/job-listings")}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") navigate("/job-listings");
+                      }}
+                    >
+                      {T.job_listings}
+                    </li>
+                    <li tabIndex={-1}>
+                      <Link to="/applied-jobs" style={{ color: "black", textDecoration: "none" }}>
+                        {T.applied_jobs}
+                      </Link>
+                    </li>
+                    <li tabIndex={-1}>
+                      <Link to="/" style={{ color: "black", textDecoration: "none" }}>
+                        {T.update_prefs}
+                      </Link>
+                    </li>
+                  </ul>
+                )}
+              </li>
+            )}
           </ul>
 
           <button
@@ -505,22 +598,27 @@ export default function Navbar() {
                 </span>
               </li>
 
-              <li className={nav.mobileGroupHead}>{T.careers}</li>
-              <li
-                className={nav.mobileSubItem}
-                onClick={() => {
-                  setMobileOpen(false);
-                  navigate("/job-listings");
-                }}
-              >
-                {T.job_listings}
-              </li>
-              <li className={nav.mobileSubItem}>{T.applied_jobs}</li>
-              <li className={nav.mobileSubItem}>
-                <Link to="/" style={{ color: "white", textDecoration: "none" }} onClick={() => setMobileOpen(false)}>
-                  {T.update_prefs}
-                </Link>
-              </li>
+              {/* Careers group visible only when token exists */}
+              {hasToken && (
+                <>
+                  <li className={nav.mobileGroupHead}>{T.careers}</li>
+                  <li
+                    className={nav.mobileSubItem}
+                    onClick={() => {
+                      setMobileOpen(false);
+                      navigate("/job-listings");
+                    }}
+                  >
+                    {T.job_listings}
+                  </li>
+                  <li className={nav.mobileSubItem}>{T.applied_jobs}</li>
+                  <li className={nav.mobileSubItem}>
+                    <Link to="/" style={{ color: "white", textDecoration: "none" }} onClick={() => setMobileOpen(false)}>
+                      {T.update_prefs}
+                    </Link>
+                  </li>
+                </>
+              )}
             </ul>
           </div>
         </div>

@@ -4,7 +4,7 @@ from typing import Optional, List
 class Job(BaseModel):
     id: str
     title: str
-    company: str
+    company: Optional[str] = None
     location: str
     employmentType: str
     description: str

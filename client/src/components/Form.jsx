@@ -1,8 +1,26 @@
 // src/pages/Form.jsx
 import React, { useCallback, useMemo, useRef, useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import s from "../styles/Form.module.css";
 import { MapPinIcon } from "@heroicons/react/24/outline";
 import { translateBatch } from "../lib/translateClient";
+
+// Decode JWT payload (Base64URL -> JSON)
+function decodeJwt(token) {
+  try {
+    const payload = token.split(".")[1] || "";
+    const b64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const pad = "=".repeat((4 - (b64.length % 4)) % 4);
+    const json = atob(b64 + pad);
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+// Where the user API lives (override in .env via VITE_API_BASE)
+const API_BASE = import.meta.env.VITE_API_BASE + "/user";
+const AUTH_BASE = import.meta.env.VITE_API_BASE + "/auth"; // for signup
 
 const BASE = {
   title_add_update: "Add/Update Preferences",
@@ -83,6 +101,8 @@ const BASE = {
 };
 
 export default function Form() {
+  const navigate = useNavigate();
+
   // Minimal translation state
   const [S, setS] = useState(BASE);
   const [isLangLoading, setIsLangLoading] = useState(false);
@@ -100,6 +120,16 @@ export default function Form() {
   const [gender, setGender] = useState("");
   const [isDisabled, setIsDisabled] = useState(false);
   const [accommodations, setAccommodations] = useState("");
+
+  // Keep raw skills so commas are allowed while typing
+  const [skillsInput, setSkillsInput] = useState("");
+
+  // Separate final notes from summary
+  const [finalNotes, setFinalNotes] = useState("");
+
+  // Auth gate: treat either "authtoken" or "token" as login
+  const [authToken, setAuthToken] = useState(() => localStorage.getItem("authtoken") || localStorage.getItem("token") || "");
+
   const fileInputRef = useRef(null);
 
   const images = ["/img_1.png", "/img_2.png"];
@@ -154,7 +184,9 @@ export default function Form() {
         }
         const json = await res.json();
         setParsed(normalizeApilayerToForm(json) || emptyData);
+        setFinalNotes("");
       } catch (e) {
+        console.log("Parse Failed");
         setErr(e?.message || S.parse_failed);
         setParsed(null);
       } finally {
@@ -280,14 +312,13 @@ export default function Form() {
   const disableUI = isLangLoading || loading;
   const busyAttr = disableUI ? "true" : "false";
 
-  // Minimal translation: react to app:lang and storage; translate on mount and on change
+  // Minimal translation lifecycle
   useEffect(() => {
     let active = true;
     let ctrl = new AbortController();
 
     const translateNow = async () => {
       const lang = localStorage.getItem("lang") || "en";
-      // Fast path for English (no backend call)
       if (lang === "en") {
         setIsLangLoading(false);
         setS(BASE);
@@ -318,20 +349,15 @@ export default function Form() {
     };
 
     const onLang = () => {
-      // Abort any in-flight request and start a new one
       ctrl.abort();
       ctrl = new AbortController();
       translateNow();
     };
 
-    // Initial translate
     translateNow();
-
-    // Listen for language changes
     window.addEventListener("app:lang", onLang);
     window.addEventListener("storage", onLang);
 
-    // Cleanup
     return () => {
       active = false;
       ctrl.abort();
@@ -339,6 +365,219 @@ export default function Form() {
       window.removeEventListener("storage", onLang);
     };
   }, []);
+
+  // Normalize backend User -> form state
+  function normalizeUserToForm(u) {
+    const edu = Array.isArray(u?.education) ? u.education : [];
+    const exp = Array.isArray(u?.experience) ? u.experience : [];
+    const skillsArr =
+      typeof u?.skills === "string"
+        ? u.skills.split(",").map((x) => x.trim()).filter(Boolean)
+        : Array.isArray(u?.skills)
+        ? u.skills
+        : [];
+
+    return {
+      profile: {
+        name: u?.name || "",
+        email: u?.email || "",
+        phone: u?.phone || "",
+        location: u?.location || "",
+        links: [],
+        summary: u?.summary || "",
+      },
+      education: edu.map((e) => ({
+        school: e?.school || "",
+        degree: e?.degree || "",
+        grade: e?.grade || "",
+        startDate: e?.startDate || "",
+        endDate: e?.endDate || "",
+        current: false,
+        descriptions: e?.description ? [e.description] : [],
+      })),
+      work: exp.map((w) => ({
+        company: w?.company || "",
+        title: w?.position || "",
+        startDate: w?.startDate || "",
+        endDate: w?.endDate || "",
+        current: false,
+        descriptions: w?.description ? [w.description] : [],
+      })),
+      skills: skillsArr,
+      total_experience: 0,
+    };
+  }
+
+  // Fetch user profile with Authorization: Bearer <token>
+  const fetchAndFillProfile = useCallback(async () => {
+    const token = authToken;
+    if (!token) return;
+
+    try {
+      setLoading(true);
+      setErr(null);
+      let res = await fetch(`${API_BASE}/me`, {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!res.ok) {
+        const t = await res.text().catch(() => "");
+        throw new Error(t || `Profile fetch failed (${res.status})`);
+      }
+
+      const user = await res.json();
+      const filled = normalizeUserToForm(user);
+      setParsed((prev) => ({ ...(prev || emptyData), ...filled }));
+
+      setGender(user?.gender || "");
+      setIsDisabled(!!user && typeof user.disability === "string" && user.disability !== "None");
+      setFinalNotes(user?.finalNotes || "");
+    } catch (e) {
+      console.log("Failed to load profile");
+      setErr(e?.message || "Failed to load profile");
+    } finally {
+      setLoading(false);
+    }
+  }, [emptyData, authToken]);
+
+  // React to auth changes from other tabs/windows or flows
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (e.key === "authtoken" || e.key === "token") {
+        setAuthToken(localStorage.getItem("authtoken") || localStorage.getItem("token") || "");
+      }
+    };
+    const onAuth = () => {
+      setAuthToken(localStorage.getItem("authtoken") || localStorage.getItem("token") || "");
+    };
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("app:auth", onAuth);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("app:auth", onAuth);
+    };
+  }, []);
+
+  // Load profile on mount or when auth token changes
+  useEffect(() => {
+    fetchAndFillProfile();
+  }, [fetchAndFillProfile]);
+
+  // Validation flags
+  const emailPatternOk =
+    p.profile.email.trim().length === 0
+      ? false
+      : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p.profile.email.trim());
+  const nameInvalid = requiredInvalid(p.profile.name);
+  const emailInvalid = requiredInvalid(p.profile.email) || !emailPatternOk;
+  const phoneInvalid = requiredInvalid(p.profile.phone) || !!phoneErr;
+  const locationInvalid = requiredInvalid(p.profile.location);
+  const summaryInvalid = requiredInvalid(p.profile.summary);
+  const skillsInvalid = requiredInvalid(skillsInput.trim());
+
+  // Keep skillsInput in sync if parsed changes (e.g., after fetch/upload)
+  useEffect(() => {
+    setSkillsInput((p.skills || []).join(", "));
+  }, [p.skills]);
+
+  // Submit -> POST /auth/signup
+  const handleSubmit = async () => {
+    setTouched((prev) => ({
+      ...prev,
+      name: true,
+      email: true,
+      phone: true,
+      location: true,
+      summary: true,
+      skills: true,
+      finalNotes: true,
+    }));
+
+    if (nameInvalid || emailInvalid || phoneInvalid || locationInvalid || summaryInvalid || skillsInvalid) {
+      return;
+    }
+
+    const skillsArray = skillsInput
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    const payload = {
+      name: p.profile.name.trim(),
+      email: p.profile.email.trim(),
+      phone: p.profile.phone.trim(),
+      location: p.profile.location.trim(),
+      summary: p.profile.summary,
+      finalNotes: finalNotes,
+      education: (p.education || []).map((e) => ({
+        school: e.school || "",
+        degree: e.degree || "",
+        grade: e.grade || "",
+        startDate: e.startDate || "",
+        endDate: e.endDate || "",
+        description: (e.descriptions || []).join("\n"),
+      })),
+      experience: (p.work || []).map((w) => ({
+        company: w.company || "",
+        position: w.title || "",
+        startDate: w.startDate || "",
+        endDate: w.endDate || "",
+        description: (w.descriptions || []).join("\n"),
+      })),
+      skills: skillsArray,
+      gender,
+      disability: isDisabled ? "Yes" : "None",
+      accommodations: accommodations || "",
+    };
+
+    try {
+      setLoading(true);
+      setErr(null);
+
+      const res = await fetch(`${AUTH_BASE}/signup`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `Signup failed (${res.status})`);
+      }
+
+      const data = await res.json();
+      if (data?.token) {
+        localStorage.setItem("token", data.token);
+        window.dispatchEvent(new Event("app:auth"));
+      }
+      console.log("Signup success:", data);
+    } catch (e) {
+      console.error("Signup error", e);
+      setErr(e?.message || "Signup failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // If not authenticated, prompt sign-in and hide form
+  if (!authToken) {
+    return (
+      <div className={s.container} aria-busy={busyAttr}>
+        <h2 className={s.title}>Sign in required</h2>
+        <p className={s.info}>Please sign in to update preferences and submit details.</p>
+        <div className={s.submitRow}>
+          <button type="button" className={s.buttonPrimary} onClick={() => navigate("/login")}>
+            Go to Login
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={s.container} aria-busy={busyAttr}>
@@ -381,7 +620,6 @@ export default function Form() {
           </div>
 
           {loading && <p className={s.info}>{S.parsing_resume}</p>}
-          {err && <p className={s.errorText}>{err}</p>}
 
           <form className={s.form} autoComplete="off">
             {/* Profile */}
@@ -794,22 +1032,23 @@ export default function Form() {
                     className={`${s.input} ${touched.skills && skillsInvalid ? s.invalid : ""}`}
                     type="text"
                     placeholder={S.skills_ph}
-                    value={(p.skills || []).join(", ")}
-                    onChange={(e) =>
+                    value={skillsInput}
+                    onChange={(e) => setSkillsInput(e.target.value)}
+                    onBlur={() => {
                       setParsed((prev) => ({
                         ...(prev || emptyData),
-                        skills: e.target.value
+                        skills: skillsInput
                           .split(",")
                           .map((s) => s.trim())
                           .filter(Boolean),
-                      }))
-                    }
-                    onBlur={() => markTouched("skills")}
+                      }));
+                      markTouched("skills");
+                    }}
                     required
                     disabled={disableUI}
                   />
                   <div className={s.note}>{S.skills_note}</div>
-                  {touched.skills && ((p.skills || []).join(", ").trim().length === 0) && (
+                  {touched.skills && skillsInput.trim().length === 0 && (
                     <div className={s.errorText}>{S.skills_required}</div>
                   )}
                 </div>
@@ -873,22 +1112,17 @@ export default function Form() {
               )}
             </fieldset>
 
-            {/* Final notes */}
+            {/* Final notes (separate from summary) */}
             <fieldset className={s.section} disabled={disableUI} aria-busy={busyAttr}>
               <legend className={s.legend}>{S.final_section}</legend>
               <div className={s.row}>
                 <label className={s.label}>{S.final_notes_label}</label>
                 <textarea
-                  className={`${s.textarea} ${touched.finalNotes && requiredInvalid(p.profile.summary) ? s.invalid : ""}`}
+                  className={`${s.textarea} ${touched.finalNotes && requiredInvalid(finalNotes) ? s.invalid : ""}`}
                   rows={4}
                   placeholder={S.final_notes_ph}
-                  value={p.profile.summary}
-                  onChange={(e) =>
-                    setParsed((prev) => ({
-                      ...(prev || emptyData),
-                      profile: { ...(prev?.profile || emptyData.profile), summary: e.target.value },
-                    }))
-                  }
+                  value={finalNotes}
+                  onChange={(e) => setFinalNotes(e.target.value)}
                   onBlur={() => markTouched("finalNotes")}
                   disabled={disableUI}
                 />
@@ -896,7 +1130,13 @@ export default function Form() {
             </fieldset>
 
             <div className={s.submitRow}>
-              <button type="button" className={s.buttonPrimary} disabled={disableUI}>
+              <button
+                type="button"
+                className={s.buttonPrimary}
+                disabled={disableUI}
+                onClick={handleSubmit}
+                title="Submit"
+              >
                 {isLangLoading ? "…" : S.submit}
               </button>
             </div>

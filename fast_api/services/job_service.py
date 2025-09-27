@@ -3,11 +3,15 @@ from models.job import Job
 from model import get_embedding, job_to_text
 import numpy as np
 from typing import List
+import re
 
 async def get_all_jobs(db):
     jobs = []
     async for job in db.jobs.find():
         job["id"] = str(job["id"])
+        job.pop("_id", None)
+        # print(job.keys())
+        # print(job.get("company"))
         jobs.append(Job(**job))
     return jobs
 
@@ -47,14 +51,27 @@ async def delete_job(db, job_id: str):
         raise HTTPException(status_code=404, detail="Job not found")
     return {"msg": "Job deleted"}
 
-async def filter_jobs(db, companies, positions):
-    query = {}
-    if companies and len(companies) > 0:
-        query["company"] = {"$in": companies}
-    if positions and len(positions) > 0:
-        query["title"] = {"$in": positions}
+
+async def filter_jobs(db, search: List[str] | None):
+    # Normalize and sanitize terms
+    terms = [t.strip() for t in (search or []) if t and t.strip()]
+    
+    # Build cursor
+    if not terms:
+        cursor = db.jobs.find({})
+    else:
+        # Case-insensitive substring match for each term
+        regexes = [{"$regex": re.escape(t), "$options": "i"} for t in terms]
+        # Match in either company OR title
+        query = {
+            "$or": [{"company": r} for r in regexes] + [{"title": r} for r in regexes]
+        }
+        cursor = db.jobs.find(query)
+
+    # Materialize results into Pydantic models
     jobs = []
-    async for job in db.jobs.find(query):
-        job["id"] = str(job["id"])
+    async for job in cursor:
+        job["id"] = str(job.get("id") or job.get("_id") or "")
+        job.pop("_id", None)
         jobs.append(Job(**job))
     return jobs

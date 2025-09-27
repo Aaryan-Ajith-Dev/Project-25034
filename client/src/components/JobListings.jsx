@@ -1,10 +1,45 @@
 // src/pages/JobListings.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import s from "../styles/JobListings.module.css";
+import { translateBatch } from "../lib/translateClient";
 
-const API_BASE = import.meta.env.VITE_JOBS_API || "/api/jobs";
-const RECS_API = import.meta.env.VITE_RECS_API || "/api/recommendations/jobs";
-const CANDIDATE_ID = import.meta.env.VITE_CANDIDATE_ID || "";
+// Backed by FastAPI router mounted at prefix "/jobs" in main.py
+// Override with VITE_API_BASE (e.g., "http://127.0.0.1:8000")
+const JOBS_API = (import.meta.env.VITE_API_BASE || "") + "/jobs";
+
+// UI strings (translatable)
+const BASE = {
+  search_ph: "Search jobs by title, company, location",
+  search_title: "Search",
+  search_aria: "Job Search",
+  submit_search_aria: "Submit Job Search",
+  top_matches: "Top matches",
+  jobs_word: "jobs",
+  loading: "Loading...",
+  failed_load: "Failed to load job listings.",
+  showing_prefix: "Showing",
+  of: "of",
+  prev: "Prev",
+  next: "Next",
+  no_jobs_page: "No jobs in this page yet…",
+  list_aria: "Job Listings",
+  pagination_aria: "Pagination",
+  page_word: "Page",
+  select_placeholder: "Select a job from the list to see details.",
+  untitled_job: "Untitled Job",
+  unknown_company: "Unknown company",
+  description: "Description",
+  skills: "Skills",
+  compensation: "Compensation",
+  posted_label: "Posted:",
+  application: "Application",
+  view_posting: "View Job Posting",
+  apply: "Apply",
+  withdraw: "Withdraw",
+  withdraw_title: "Withdraw application",
+  apply_title: "Apply to this job",
+  per: "per",
+};
 
 // Normalize one MongoDB document into UI-friendly job object
 function normalizeJob(doc, idx) {
@@ -30,9 +65,13 @@ function normalizeJob(doc, idx) {
 }
 
 // Tiny, accessible switch styled by CSS module
-function TinySwitch({ checked, onChange, label }) {
-  const toggle = () => onChange(!checked);
+function TinySwitch({ checked, onChange, label, disabled = false }) {
+  const toggle = () => {
+    if (disabled) return;
+    onChange(!checked);
+  };
   const onKeyDown = (e) => {
+    if (disabled) return;
     if (e.key === " " || e.key === "Enter") {
       e.preventDefault();
       toggle();
@@ -45,9 +84,11 @@ function TinySwitch({ checked, onChange, label }) {
         role="switch"
         aria-checked={checked}
         aria-label={label}
-        className={s.switchBtn}
+        aria-disabled={disabled ? "true" : "false"}
+        className={`${s.switchBtn} ${disabled ? s.switchBtnDisabled : ""}`}
         onClick={toggle}
         onKeyDown={onKeyDown}
+        disabled={disabled}
       >
         <span className={s.switchTrack}>
           <span aria-hidden="true" className={s.switchThumb} />
@@ -59,194 +100,400 @@ function TinySwitch({ checked, onChange, label }) {
 }
 
 export default function JobListings() {
-  // Input vs submitted query
+  // Language + UI i18n
+  const [S, setS] = useState(BASE);
+  const [lang, setLang] = useState(() => localStorage.getItem("lang") || "en");
+  const [isLangLoading, setIsLangLoading] = useState(false);
+
+  // Search input and submitted query
   const [inputQ, setInputQ] = useState("");
   const [q, setQ] = useState("");
 
-  // Recommendations mode (top 5)
+  // "Top matches" mode (first 5 from server/global list)
   const [topOnly, setTopOnly] = useState(true);
 
-  // Paging configuration
-  const pageSizeBase = 200;
-  const fetchBatchBase = 500;
-  const prefetchAhead = 2;
-
-  // Derived sizes
+  // Client-side pagination config
+  const pageSizeBase = 100;
   const pageSize = topOnly ? 5 : pageSizeBase;
-  const fetchBatch = topOnly ? 5 : fetchBatchBase;
 
   // Data state
+  const [allJobs, setAllJobs] = useState([]); // cache of all jobs fetched
   const [total, setTotal] = useState(0);
   const [pages, setPages] = useState({});
-  const [loadedBatches, setLoadedBatches] = useState(new Set());
   const [currentPage, setCurrentPage] = useState(0);
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadErr, setLoadErr] = useState("");
 
-  const abortRef = useRef(null);
+  // Track applied jobs (persist to localStorage)
+  const [appliedIds, setAppliedIds] = useState(() => {
+    try {
+      const raw = localStorage.getItem("appliedJobs") || "[]";
+      const list = JSON.parse(raw);
+      return new Set(Array.isArray(list) ? list : []);
+    } catch {
+      return new Set();
+    }
+  });
+
   const lastQueryRef = useRef("");
 
-  // Total pages
-  const totalPages = useMemo(() => {
-    if (total <= 0) return 0;
-    return Math.ceil(total / pageSize);
-  }, [total, pageSize]);
+  // Translation cache for job content: key = `${lang}::${text}` -> translated
+  const [tCache, setTCache] = useState({});
 
-  async function fetchBatchFromServer(skip, limit, query) {
-    const controller = new AbortController();
-    abortRef.current = controller;
+  // Helpers
+  const cacheKey = (text) => `${lang}::${text}`;
+  const t = (text) => {
+    if (!text || typeof text !== "string") return text;
+    const k = cacheKey(text);
+    return tCache[k] ?? text;
+  };
 
-    const params = new URLSearchParams();
-    params.set("limit", String(limit));
-    params.set("skip", String(skip));
-    if (query && query.trim()) params.set("q", query.trim());
+  useEffect(() => {
+    const onLang = (e) => {
+      const l = (e?.detail && e.detail.code) || localStorage.getItem("lang") || "en";
+      setLang(l);
+    };
+    window.addEventListener("app:lang", onLang);
+    window.addEventListener("storage", onLang); // still useful for other tabs
+    return () => {
+      window.removeEventListener("app:lang", onLang);
+      window.removeEventListener("storage", onLang);
+    };
+  }, []);
 
-    const url = `${API_BASE}?${params.toString()}`;
-    const res = await fetch(url, { signal: controller.signal, headers: { Accept: "application/json" } });
-    if (!res.ok) throw new Error(`API ${res.status}`);
-    const data = await res.json();
-    const docs = Array.isArray(data?.jobs) ? data.jobs : Array.isArray(data) ? data : [];
-    const normalized = docs.map((d, i) => normalizeJob(d, skip + i));
-    return { jobs: normalized, total: Number(data?.total || 0) };
-  }
+  // 2) Reset translation cache when language changes
+  useEffect(() => {
+    setTCache({});
+  }, [lang]);
 
-  async function fetchTopRecommendations(query) {
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    const params = new URLSearchParams();
-    params.set("limit", "5");
-    if (CANDIDATE_ID) params.set("candidateId", CANDIDATE_ID);
-    if ((query || "").trim()) params.set("q", (query || "").trim());
-
-    const url = `${RECS_API}?${params.toString()}`;
-    const res = await fetch(url, { signal: controller.signal, headers: { Accept: "application/json" } });
-    if (!res.ok) throw new Error(`API ${res.status}`);
-    const data = await res.json();
-    const docs = Array.isArray(data?.jobs) ? data.jobs : Array.isArray(data) ? data : [];
-    const normalized = docs.map((d, i) => normalizeJob(d, i));
-    return { jobs: normalized, total: Math.min(5, normalized.length || Number(data?.total || 5)) };
-  }
-
-  function placeBatchIntoPages(batchSkip, batchJobs) {
-    if (batchJobs.length === 0) return;
-    setPages((prev) => {
-      const next = { ...prev };
-      for (let i = 0; i < batchJobs.length; i++) {
-        const absoluteIndex = batchSkip + i;
-        const pageIndex = Math.floor(absoluteIndex / pageSize);
-        if (!next[pageIndex]) next[pageIndex] = [];
-        next[pageIndex].push(batchJobs[i]);
+  // Translate UI strings when lang changes
+  useEffect(() => {
+    let active = true;
+    let ctrl = new AbortController();
+    const doTranslate = async () => {
+      if (lang === "en") {
+        setS(BASE);
+        setIsLangLoading(false);
+        return;
       }
-      Object.keys(next).forEach((k) => {
-        next[k] = next[k].sort((a, b) => String(a.id).localeCompare(String(b.id)));
-      });
-      return next;
-    });
+      setIsLangLoading(true);
+      const keys = Object.keys(BASE).sort();
+      const texts = keys.map((k) => BASE[k]);
+      try {
+        const translations = await translateBatch({
+          src: "en",
+          tgt: lang,
+          texts,
+          signal: ctrl.signal,
+        });
+        if (!active) return;
+        const out = {};
+        for (let i = 0; i < keys.length; i++) out[keys[i]] = translations[i] || BASE[keys[i]];
+        setS(out);
+      } catch {
+        if (active) setS(BASE);
+      } finally {
+        if (active) setIsLangLoading(false);
+      }
+    };
+    doTranslate();
+    return () => {
+      active = false;
+      ctrl.abort();
+    };
+  }, [lang]);
+
+  // Server calls
+  async function fetchAllFromServer() {
+    const res = await fetch(`${JOBS_API}/`, { headers: { Accept: "application/json" } });
+    if (!res.ok) throw new Error(`Jobs API ${res.status}`);
+    const data = await res.json();
+    const docs = Array.isArray(data) ? data : [];
+    return docs.map((d, i) => normalizeJob(d, i));
   }
 
-  async function loadInitial(query, useTop) {
+  // Filter endpoint that accepts repeated ?search=
+  async function fetchFilteredBySearch(queryString) {
+    const terms = (queryString || "")
+      .split(/[,\s]+/)
+      .map((t) => t.trim())
+      .filter(Boolean);
+    const params = new URLSearchParams();
+    for (const t of terms) params.append("search", t); // ?search=a&search=b
+    const url = `${JOBS_API}/filter?${params.toString()}`;
+    const res = await fetch(url, { headers: { Accept: "application/json" } });
+    if (!res.ok) throw new Error(`Filter API ${res.status}`);
+    const data = await res.json();
+    const docs = Array.isArray(data) ? data : [];
+    return docs.map((d, i) => normalizeJob(d, i));
+  }
+
+  function materializePages(jobs) {
+    const paged = {};
+    for (let i = 0; i < jobs.length; i++) {
+      const pageIndex = Math.floor(i / pageSize);
+      if (!paged[pageIndex]) paged[pageIndex] = [];
+      paged[pageIndex].push(jobs[i]);
+    }
+    setPages(paged);
+    setTotal(jobs.length);
+    setCurrentPage(0);
+    setSelected(jobs[0] || null);
+  }
+
+  async function loadInitial(query, top) {
     setLoading(true);
     setLoadErr("");
     setPages({});
-    setLoadedBatches(new Set());
-    setCurrentPage(0);
     setSelected(null);
     setTotal(0);
-    if (abortRef.current) abortRef.current.abort();
-
     try {
-      if (useTop) {
-        const { jobs, total: t } = await fetchTopRecommendations(query);
-        setTotal(Math.min(5, t || jobs.length || 0));
-        placeBatchIntoPages(0, jobs.slice(0, 5));
-        setLoadedBatches(new Set([0]));
-        setSelected(jobs[0] || null);
+      let jobs = [];
+      const qNow = (query || "").trim();
+      if (qNow) {
+        jobs = await fetchFilteredBySearch(qNow);
       } else {
-        const { jobs, total: t } = await fetchBatchFromServer(0, fetchBatch, query);
-        setTotal(t);
-        placeBatchIntoPages(0, jobs);
-        setLoadedBatches(new Set([0]));
-        setSelected((jobs && jobs[0]) || null);
+        const all = await fetchAllFromServer();
+        jobs = all;
+        setAllJobs(all);
+      }
+      if (top) {
+        const top5 = jobs.slice(0, 5);
+        materializePages(top5);
+      } else {
+        materializePages(jobs);
       }
     } catch (e) {
-      setLoadErr("Failed to load job listings.");
+      setLoadErr(S.failed_load || "Failed to load job listings.");
     } finally {
       setLoading(false);
     }
   }
 
-  // Prefetch around visible page (skip in recommendations mode)
-  async function prefetchAround(pageIndex, query) {
-    if (topOnly) return;
-    if (total <= 0) return;
-    const startAbs = pageIndex * pageSize;
-    const baseSkip = startAbs - (startAbs % fetchBatch);
-    const toFetch = [];
-
-    for (let i = 0; i <= prefetchAhead; i++) {
-      const skipFwd = baseSkip + i * fetchBatch;
-      if (skipFwd < total && !loadedBatches.has(skipFwd)) toFetch.push(skipFwd);
+  // Auto-disable "Top matches" when searching: force it off
+  const isSearching = !!(q || "").trim();
+  useEffect(() => {
+    if (isSearching && topOnly) {
+      setTopOnly(false);
     }
-    const skipBack = baseSkip - fetchBatch;
-    if (skipBack >= 0 && !loadedBatches.has(skipBack)) toFetch.push(skipBack);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSearching]);
 
-    for (const skip of toFetch) {
-      try {
-        const { jobs } = await fetchBatchFromServer(skip, fetchBatch, query);
-        placeBatchIntoPages(skip, jobs);
-        setLoadedBatches((prev) => new Set(prev).add(skip));
-        await new Promise((r) => setTimeout(r, 50));
-      } catch {
-        // ignore prefetch errors
+  // Load when query or toggle changes
+  useEffect(() => {
+    const qNow = (q || "").trim();
+    if (qNow === lastQueryRef.current) {
+      if (allJobs.length && !qNow) {
+        const jobs = topOnly ? allJobs.slice(0, 5) : allJobs;
+        materializePages(jobs);
+        return;
       }
+    }
+    const tId = setTimeout(() => {
+      lastQueryRef.current = qNow;
+      loadInitial(qNow, topOnly);
+    }, 200);
+    return () => clearTimeout(tId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, topOnly, S.failed_load]);
+
+  const currentItems = useMemo(() => pages[currentPage] || [], [pages, currentPage]);
+  const totalPages = useMemo(() => (total <= 0 ? 0 : Math.ceil(total / pageSize)), [total, pageSize]);
+  const canPrev = currentPage > 0;
+  const canNext = totalPages > 0 && currentPage < totalPages - 1;
+
+  // Helper: currency formatting for min/max salary
+  function formatMoney(n, curr) {
+    if (n == null || n === "") return null;
+    if (!curr) return String(n);
+    try {
+      return new Intl.NumberFormat(undefined, { style: "currency", currency: curr }).format(Number(n));
+    } catch {
+      return `${curr} ${n}`;
     }
   }
 
-  // Load on submitted query or toggle changes
-  useEffect(() => {
-    const qNow = (q || "").trim();
-    if (qNow === lastQueryRef.current && !topOnly) return;
-    const t = setTimeout(() => {
-      lastQueryRef.current = qNow;
-      loadInitial(qNow, topOnly);
-    }, 250);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, topOnly]);
+  // Toggle Apply/Withdraw
+  function toggleApply(job) {
+    const next = new Set(appliedIds);
+    if (next.has(job.id)) next.delete(job.id);
+    else next.add(job.id);
+    setAppliedIds(next);
+    try {
+      localStorage.setItem("appliedJobs", JSON.stringify(Array.from(next)));
+    } catch {}
+  }
 
-  // Prefetch when navigating pages (not in recommendations mode)
+  // Helper to build compact pagination items (first, window around current, last)
+  function buildPageWindow(total, current, delta = 2) {
+    const set = new Set([0, total - 1]);
+    const start = Math.max(0, current - delta);
+    const end = Math.min(total - 1, current + delta);
+    for (let i = start; i <= end; i++) set.add(i);
+    return Array.from(set).sort((a, b) => a - b);
+  }
+
+  // Translate current page job fields + selected job nested fields (batch + de-dup per language)
   useEffect(() => {
-    if (!topOnly && total > 0) {
-      prefetchAround(currentPage, lastQueryRef.current);
+    let active = true;
+    let ctrl = new AbortController();
+
+    const texts = [];
+    const seen = new Set();
+    const push = (v) => {
+      if (!v || typeof v !== "string") return;
+      const trimmed = v.trim();
+      if (!trimmed) return;
+      const k = cacheKey(trimmed);
+      if (tCache[k]) return; // already translated
+      if (!seen.has(trimmed)) {
+        seen.add(trimmed);
+        texts.push(trimmed);
+      }
+    };
+
+    // Add current page job fields
+    for (const j of currentItems) {
+      push(j.title);
+      push(j.company);
+      push(j.location);
+      push(j.employmentType);
+      push(j.seniority);
+      push(j.description);
+      push(j.skills);
+      push(j.posted);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, total, topOnly]);
 
-  const currentItems = useMemo(() => pages[currentPage] || [], [pages, currentPage]);
-  const canPrev = !topOnly && currentPage > 0;
-  const canNext = !topOnly && totalPages > 0 && currentPage < totalPages - 1;
+    // Add selected job nested fields
+    if (selected) {
+      push(selected.title);
+      push(selected.company);
+      push(selected.location);
+      push(selected.employmentType);
+      push(selected.seniority);
+      push(selected.description);
+      push(selected.skills);
+      push(selected.posted);
+      
+      // Nested raw fields
+      const rraw = selected.raw?.raw || {};
+      push(rraw.skills_desc);
+      push(rraw.pay_period);
+      push(rraw.payPeriod);
+      
+      // Any other nested strings from raw
+      if (selected.raw) {
+        const addFromObj = (obj) => {
+          if (!obj || typeof obj !== "object") return;
+          for (const val of Object.values(obj)) {
+            if (typeof val === "string") {
+              push(val);
+            } else if (typeof val === "object" && val !== null) {
+              addFromObj(val);
+            }
+          }
+        };
+        addFromObj(selected.raw);
+      }
+    }
+
+    const run = async () => {
+      if (lang === "en" || texts.length === 0) return;
+      try {
+        const out = await translateBatch({
+          src: "auto",
+          tgt: lang,
+          texts,
+          signal: ctrl.signal,
+        });
+        if (!active) return;
+        setTCache((prev) => {
+          const next = { ...prev };
+          for (let i = 0; i < texts.length; i++) {
+            next[`${lang}::${texts[i]}`] = out[i] || texts[i];
+          }
+          return next;
+        });
+      } catch {
+        // ignore translation failures; fall back to source text
+      }
+    };
+
+    run();
+    return () => {
+      active = false;
+      ctrl.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentItems, selected, lang]);
+
+  // Derive translated versions for current list and selected view
+  const currentItemsT = useMemo(() => {
+    return currentItems.map((j) => ({
+      ...j,
+      title: t(j.title),
+      company: t(j.company),
+      location: t(j.location),
+      employmentType: t(j.employmentType),
+      seniority: t(j.seniority),
+      description: t(j.description),
+      skills: t(j.skills),
+      posted: t(j.posted),
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentItems, tCache, lang]);
+
+  const selectedT = useMemo(() => {
+    if (!selected) return null;
+    return {
+      ...selected,
+      title: t(selected.title),
+      company: t(selected.company),
+      location: t(selected.location),
+      employmentType: t(selected.employmentType),
+      seniority: t(selected.seniority),
+      description: t(selected.description),
+      skills: t(selected.skills),
+      posted: t(selected.posted),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, tCache, lang]);
+
+  // Trim description to first line
+  const briefDesc = (selectedT?.description || "").split("\n")[0];
+
+  // Views and compensation from nested raw (with translation)
+  const views = selected?.raw?.raw?.views;
+  const rraw = selected?.raw?.raw || {};
+  const min = rraw.min_salary ?? rraw.salaryMin ?? null;
+  const max = rraw.max_salary ?? rraw.salaryMax ?? null;
+  const curr = rraw.currency || rraw.salaryCurrency || null;
+  const payPeriod = t(rraw.pay_period || rraw.payPeriod || "");
+
+  const formattedMin = formatMoney(min, curr);
+  const formattedMax = formatMoney(max, curr);
+  const hasRange = min != null || max != null;
 
   return (
     <div className={s.wrap}>
       <aside className={s.left}>
-        {/* Stacked: search on top, switch directly below left-aligned */}
+        {/* Toolbar */}
         <div className={`${s.toolbar} ${s.toolbarStack}`}>
           <div className={s.searchWrap}>
             <input
               className={s.search}
               type="search"
-              placeholder="Search jobs by title, company, location"
+              placeholder={S.search_ph}
               value={inputQ}
               onChange={(e) => setInputQ(e.target.value)}
-              aria-label="Job Search"
+              aria-label={S.search_aria}
             />
             <button
               className={s.iconBtn}
               onClick={() => setQ((inputQ || "").trim())}
-              aria-label="Submit Job Search"
-              title="Search"
+              aria-label={S.submit_search_aria}
+              title={S.search_title}
             >
               <img src="/search.png" alt="" className={s.icon} />
             </button>
@@ -255,67 +502,46 @@ export default function JobListings() {
           <TinySwitch
             checked={topOnly}
             onChange={(enabled) => setTopOnly(enabled)}
-            label="Top matches (5)"
+            label={`${S.top_matches} (5)`}
+            disabled={isSearching}
           />
         </div>
 
-        {loading && <div className={s.info}>Loading...</div>}
+        {loading && <div className={s.info}>{S.loading}</div>}
         {!loading && loadErr && <div className={s.hint}>{loadErr}</div>}
 
         {!loading && !loadErr && (
           <>
             <div className={s.info}>
               {topOnly
-                ? `Top matches • ${Math.min(total || 0, 5)} jobs`
-                : `Showing page ${currentPage + 1} of ${Math.max(totalPages, 1)} • ${total} jobs`}
+                ? `${S.top_matches} • ${Math.min(total || 0, 5)} ${S.jobs_word}`
+                : `${S.showing_prefix} ${pageSize * (currentPage + 1)} ${S.of} ${total} ${S.jobs_word}`}
             </div>
 
             <div className={s.toolbar} style={{ borderBottom: "none", paddingTop: 0 }}>
               <button
-                className={s.uploadBtn}
+                className={`${s.btn} ${s.btnOutline}`}
                 onClick={() => setCurrentPage((p) => Math.max(p - 1, 0))}
                 disabled={!canPrev}
                 aria-disabled={!canPrev}
               >
-                Prev
+                {S.prev}
               </button>
               <button
-                className={s.uploadBtn}
+                className={`${s.btn} ${s.btnOutline}`}
                 onClick={() => setCurrentPage((p) => (canNext ? p + 1 : p))}
                 disabled={!canNext}
                 aria-disabled={!canNext}
               >
-                Next
-              </button>
-              <button
-                className={s.uploadBtn}
-                onClick={() => {
-                  if (!canNext) return;
-                  const nextPageIndex = currentPage + 1;
-                  const nextItems = pages[nextPageIndex] || [];
-                  if (nextItems.length) {
-                    setPages((prev) => {
-                      const merged = { ...prev };
-                      merged[currentPage] = [...(merged[currentPage] || []), ...nextItems];
-                      return merged;
-                    });
-                    prefetchAround(nextPageIndex + 1, lastQueryRef.current);
-                  } else {
-                    prefetchAround(nextPageIndex, lastQueryRef.current);
-                  }
-                }}
-                disabled={!canNext}
-                aria-disabled={!canNext}
-              >
-                Load more
+                {S.next}
               </button>
             </div>
 
-            <ul className={s.list} role="listbox" aria-label="Job Listings">
-              {currentItems.length === 0 ? (
-                <li className={s.hint}>No jobs in this page yet…</li>
+            <ul className={s.list} role="listbox" aria-label={S.list_aria}>
+              {currentItemsT.length === 0 ? (
+                <li className={s.hint}>{S.no_jobs_page}</li>
               ) : (
-                currentItems.map((j) => (
+                currentItemsT.map((j) => (
                   <li
                     key={j.id}
                     className={`${s.item} ${selected?.id === j.id ? s.active : ""}`}
@@ -327,77 +553,123 @@ export default function JobListings() {
                       if (e.key === "Enter" || e.key === " ") setSelected(j);
                     }}
                   >
-                    <div className={s.itemTitle}>{j.title || "Untitled Job"}</div>
+                    <div className={s.itemTitle}>{j.title || S.untitled_job}</div>
                     <div className={s.itemMeta}>
-                      {j.company || "Unknown company"} {j.location ? ` • ${j.location}` : ""}
+                      {j.company || S.unknown_company} {j.location ? ` • ${j.location}` : ""}
                     </div>
                     {j.employmentType && <div className={s.badge}>{j.employmentType}</div>}
                   </li>
                 ))
               )}
             </ul>
+
+            {/* Compact, Google-style pagination with ellipses */}
+            {totalPages > 1 && (
+              <nav className={s.pageFooter} aria-label={S.pagination_aria}>
+                {(() => {
+                  const win = buildPageWindow(totalPages, currentPage, 2);
+                  let last = null;
+                  return win.map((p) => {
+                    const gap = last !== null ? p - last : 0;
+                    last = p;
+                    return (
+                      <React.Fragment key={`frag-${p}`}>
+                        {gap > 1 && (
+                          <span role="img" aria-label="ellipses" className={s.pageDots}>
+                            …
+                          </span>
+                        )}
+                        <button
+                          className={`${s.pageBtn} ${p === currentPage ? s.pageBtnActive : ""}`}
+                          onClick={() => setCurrentPage(p)}
+                          aria-current={p === currentPage ? "page" : undefined}
+                          aria-label={`${S.page_word} ${p + 1}`}
+                        >
+                          {p + 1}
+                        </button>
+                      </React.Fragment>
+                    );
+                  });
+                })()}
+              </nav>
+            )}
           </>
         )}
       </aside>
 
       <main className={s.right} aria-live="polite">
-        {!selected && <div className={s.placeholder}>Select a job from the list to see details.</div>}
-        {selected && (
+        {!selectedT && <div className={s.placeholder}>{S.select_placeholder}</div>}
+        {selectedT && (
           <article className={s.card}>
-            <header className={s.header}>
-              <h2 className={s.title}>{selected.title || "Untitled Job"}</h2>
-              <div className={s.meta}>
-                <span className={s.company}>{selected.company || "Unknown company"}</span>
-                {selected.location && <span className={s.dot}>•</span>}
-                {selected.location && <span>{selected.location}</span>}
+            <header className={`${s.header} ${s.headerRow}`}>
+              <div className={s.headerMain}>
+                <h2 className={s.title}>{selectedT.title || S.untitled_job}</h2>
+                <div className={s.meta}>
+                  <span className={s.company}>{selectedT.company || S.unknown_company}</span>
+                  {selectedT.location && <span className={s.dot}>•</span>}
+                  {selectedT.location && <span>{selectedT.location}</span>}
+                </div>
+                <div className={s.tags}>
+                  {selectedT.employmentType && <span className={s.tag}>{selectedT.employmentType}</span>}
+                  {selectedT.seniority && <span className={s.tag}>{selectedT.seniority}</span>}
+                  {(selectedT.salaryMin || selectedT.salaryMax) && (
+                    <span className={s.tag}>
+                      {selectedT.currency ? `${selectedT.currency} ` : ""}
+                      {selectedT.salaryMin || "—"} {selectedT.salaryMax ? `– ${selectedT.salaryMax}` : ""}
+                    </span>
+                  )}
+                  {selectedT.posted && <span className={s.tag}>{`${S.posted_label} ${selectedT.posted}`}</span>}
+                </div>
               </div>
-              <div className={s.tags}>
-                {selected.employmentType && <span className={s.tag}>{selected.employmentType}</span>}
-                {selected.seniority && <span className={s.tag}>{selected.seniority}</span>}
-                {(selected.salaryMin || selected.salaryMax) && (
-                  <span className={s.tag}>
-                    {selected.currency ? `${selected.currency} ` : ""}
-                    {selected.salaryMin || "—"} {selected.salaryMax ? `– ${selected.salaryMax}` : ""}
-                  </span>
-                )}
-                {selected.posted && <span className={s.tag}>Posted: {selected.posted}</span>}
+
+              <div className={s.headerActions}>
+                {views != null && <span className={s.viewsChip}>👁 {views.toLocaleString()}</span>}
+                <button
+                  type="button"
+                  className={`${s.btn} ${appliedIds.has(selectedT.id) ? s.btnDanger : s.btnPrimary}`}
+                  onClick={() => toggleApply(selectedT)}
+                  title={appliedIds.has(selectedT.id) ? S.withdraw_title : S.apply_title}
+                >
+                  {appliedIds.has(selectedT.id) ? S.withdraw : S.apply}
+                </button>
               </div>
             </header>
 
-            {selected.description && (
+            {/* Description trimmed to the first newline */}
+            {briefDesc && (
               <section className={s.section}>
-                <h3 className={s.secHead}>Description</h3>
-                <p className={s.desc}>{selected.description}</p>
+                <h3 className={s.secHead}>{S.description}</h3>
+                <p className={s.desc}>{briefDesc}</p>
               </section>
             )}
 
-            {selected.skills && (
+            {selected?.raw?.raw?.skills_desc && (
               <section className={s.section}>
-                <h3 className={s.secHead}>Skills</h3>
-                <p className={s.desc}>{selected.skills}</p>
+                <h3 className={s.secHead}>{S.skills}</h3>
+                <p className={s.desc}>{t(selected.raw.raw.skills_desc)}</p>
               </section>
             )}
 
-            {selected.url && (
+            {/* Optional extra: compensation from nested raw */}
+            {hasRange && (
               <section className={s.section}>
-                <h3 className={s.secHead}>Application</h3>
-                <a className={s.link} href={selected.url} target="_blank" rel="noopener noreferrer">
-                  View Job Posting
+                <h3 className={s.secHead}>{S.compensation}</h3>
+                <p className={s.desc}>
+                  {formattedMin ?? "—"}
+                  {formattedMax ? ` – ${formattedMax}` : ""}
+                  {payPeriod ? ` ${S.per} ${payPeriod.toLowerCase()}` : ""}
+                </p>
+              </section>
+            )}
+
+            {selectedT.url && (
+              <section className={s.section}>
+                <h3 className={s.secHead}>{S.application}</h3>
+                <a className={s.link} href={selectedT.url} target="_blank" rel="noopener noreferrer">
+                  {S.view_posting}
                 </a>
               </section>
             )}
-
-            <section className={s.section}>
-              <h3 className={s.secHead}>Raw Data</h3>
-              <div className={s.kvWrap}>
-                {Object.entries(selected.raw || {}).slice(0, 30).map(([k, v]) => (
-                  <React.Fragment key={k}>
-                    <div className={s.k}>{k}</div>
-                    <div className={s.v}>{typeof v === "object" ? JSON.stringify(v) : String(v)}</div>
-                  </React.Fragment>
-                ))}
-              </div>
-            </section>
           </article>
         )}
       </main>

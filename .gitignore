@@ -4,7 +4,8 @@
 # Ignore Python virtual env or caches in server folder
 /server/venv/
 server/__pycache__/
-/server/*.json           # Ignore service account JSON keys
+/fast_api/__pycache__/
+fast_api/*.json           # Ignore service account JSON keys
 
 # Ignore environment files anywhere
 .env

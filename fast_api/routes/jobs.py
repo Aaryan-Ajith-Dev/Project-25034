@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, Query, Request, HTTPException
 from typing import List
 from models.job import Job
-from services.job_service import create_embedding, get_all_jobs, get_job_by_id, create_job, update_job, delete_job
+from services.job_service import create_embedding,filter_jobs, get_all_jobs, get_job_by_id, create_job, update_job, delete_job
 from db import db
 from services.auth_service import decode_access_token
 
@@ -24,8 +24,8 @@ async def list_jobs():
     return await get_all_jobs(db)
 
 @router.get("/filter", response_model=List[Job])
-async def filter_jobs(companies: List[str] = Query(None), positions: List[str] = Query(None)):
-    return await filter_jobs(db, companies, positions)
+async def get_filtered_jobs(search: List[str] = Query(None, description="List of companies or positions to filter by")):
+    return await filter_jobs(db, search)
 
 @router.get("/{job_id}", response_model=Job)
 async def get_job(job_id: str):
