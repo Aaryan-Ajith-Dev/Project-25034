@@ -10,8 +10,6 @@ async def get_all_jobs(db):
     async for job in db.jobs.find():
         job["id"] = str(job["id"])
         job.pop("_id", None)
-        # print(job.keys())
-        # print(job.get("company"))
         jobs.append(Job(**job))
     return jobs
 
@@ -43,6 +41,7 @@ async def update_job(db, job_id: str, job: Job):
     result = await db.jobs.replace_one({"id": job_id}, job.dict())
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Job not found")
+    await db.jobs.update_one({"id": job_id}, {"$set": {"embedding": get_embedding(job_to_text(job)).tolist()}})
     return job
 
 async def delete_job(db, job_id: str):

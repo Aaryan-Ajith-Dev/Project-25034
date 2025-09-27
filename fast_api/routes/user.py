@@ -107,3 +107,17 @@ async def clear_history(current_email: str = Depends(get_current_user_email)):
     
     result = await clear_user_history(db, current_email)
     return HistoryResponse(message=result["message"], history_count=result["history_count"])
+
+# Sorts jobs based on similarity to user's profile embedding
+@router.get("/recommendations", response_model=List[Job])
+async def get_recommendations(current_email: str = Depends(get_current_user_email)):
+    """Get job recommendations based on user's profile embedding"""
+    print("Fetching recommendations for:", current_email)
+    
+    # Fetch user to get embedding
+    user = await db.users.find_one({"email": current_email})
+    if not user or "embedding" not in user:
+        raise HTTPException(status_code=404, detail="User not found or embedding missing")
+
+    response = await get_recommendations_for_user(db, user["embedding"])
+    return response
