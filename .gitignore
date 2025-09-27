@@ -5,7 +5,7 @@
 /server/venv/
 server/__pycache__/
 /fast_api/__pycache__/
-fast_api/*.json           # Ignore service account JSON keys
+/fast_api/datasetaker-7d91888a83f6.json
 
 # Ignore environment files anywhere
 .env
