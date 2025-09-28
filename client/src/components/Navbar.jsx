@@ -182,7 +182,7 @@ function LangDropdown({
       {open && (
         <ul
           id={menuId}
-          className={`${nav.dropdownMenu} ${nav.alignRight} ${nav.extra}`}
+          className={`${nav.dropdownMenu} ${nav.alignRight} ${nav.extra} ${nav.scroll}`}
           ref={menuRef}
           role="menu"
         >
@@ -521,10 +521,14 @@ export default function Navbar() {
                     >
                       {T.job_listings}
                     </li>
-                    <li tabIndex={-1}>
-                      <Link to="/applied-jobs" style={{ color: "black", textDecoration: "none" }}>
-                        {T.applied_jobs}
-                      </Link>
+                    <li
+                      tabIndex={-1}
+                      onClick={() => navigate("/applied-jobs")}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") navigate("/applied-jobs");
+                      }}
+                    >
+                      {T.applied_jobs}
                     </li>
                     <li tabIndex={-1}>
                       <Link to="/" style={{ color: "black", textDecoration: "none" }}>

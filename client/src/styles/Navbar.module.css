@@ -211,6 +211,12 @@
   visibility: visible;
   pointer-events: auto;
   transform: translateY(0);
+  
+}
+
+.scroll{
+  overflow-y: auto;
+  max-height: 7rem;
 }
 .alignRight { left: auto !important; right: 0 !important; }
 
@@ -423,6 +429,7 @@
   background: rgba(255,255,255,.14);
   border-color: rgba(255,255,255,.24);
 }
+
 
 /* Optional utility */
 .extra { }
