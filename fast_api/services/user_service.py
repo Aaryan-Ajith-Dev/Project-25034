@@ -11,7 +11,7 @@ async def create_user(db, user: User):
     hashed_password = get_password_hash(user.password)
     user_dict = user.dict()
     user_dict["password"] = hashed_password
-    user_dict["embedding"] = get_embedding(user_to_text(user))
+    user_dict["embedding"] = get_embedding(user_to_text(user_dict))
     user_dict["embedding"] = user_dict["embedding"].tolist()
     user_dict["prior"] = await get_prior(db, user_dict["embedding"]) or {}
     print("Prior for user", user_dict["prior"])
