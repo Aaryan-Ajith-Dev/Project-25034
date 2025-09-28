@@ -8,5 +8,5 @@ bcrypt
 python-jose[cryptography]
 passlib[bcrypt]
 numpy
-#sentence transformer
-# motor
+sentence-transformers
+motor
