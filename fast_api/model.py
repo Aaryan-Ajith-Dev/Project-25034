@@ -37,8 +37,6 @@ def job_to_text(job) -> str:
 def user_to_text(user) -> str:
     parts = [
         ("Name: " + user.name),
-        ("Email: " + user.email),
-        ("Phone: " + user.phone),
         ("Location: " + user.location),
         ("Summary: " + user.summary),
         ("Skills: " + user.skills),
