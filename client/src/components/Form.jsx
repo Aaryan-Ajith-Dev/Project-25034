@@ -483,7 +483,8 @@ export default function Form() {
     setSkillsInput((p.skills || []).join(", "));
   }, [p.skills]);
 
-  // Submit -> POST /auth/signup
+
+  // Submit -> PUT /user/update
   const handleSubmit = async () => {
     setTouched((prev) => ({
       ...prev,
@@ -496,22 +497,34 @@ export default function Form() {
       finalNotes: true,
     }));
 
-    if (nameInvalid || emailInvalid || phoneInvalid || locationInvalid || summaryInvalid || skillsInvalid) {
+    if (
+      nameInvalid ||
+      emailInvalid ||
+      phoneInvalid ||
+      locationInvalid ||
+      summaryInvalid ||
+      skillsInvalid
+    ) {
       return;
     }
 
-    const skillsArray = skillsInput
+    // Build payload for UserUpdate (skills as comma-separated string)
+    const skillsArray = (skillsInput || "")
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
 
+    // Construct payload to match backend UserUpdate fields
     const payload = {
-      name: p.profile.name.trim(),
-      email: p.profile.email.trim(),
-      phone: p.profile.phone.trim(),
-      location: p.profile.location.trim(),
-      summary: p.profile.summary,
-      finalNotes: finalNotes,
+      // email is ignored by UserUpdate but included for completeness
+      email: (p.profile.email || "").trim(),
+      name: (p.profile.name || "").trim(),
+      phone: (p.profile.phone || "").trim(),
+      location: (p.profile.location || "").trim(),
+      summary: p.profile.summary || "",
+      role: (p.profile.role || "").trim(),
+      // backend expects skills as a string; server will normalize to list for embedding
+      skills: skillsArray.join(", "),
       education: (p.education || []).map((e) => ({
         school: e.school || "",
         degree: e.degree || "",
@@ -527,42 +540,47 @@ export default function Form() {
         endDate: w.endDate || "",
         description: (w.descriptions || []).join("\n"),
       })),
-      skills: skillsArray,
       gender,
       disability: isDisabled ? "Yes" : "None",
-      accommodations: accommodations || "",
     };
 
     try {
       setLoading(true);
       setErr(null);
+      console.log("Updating profile", payload);
+      // Auth required
+      const token = authToken;
+      if (!token) {
+        throw new Error("Not authenticated");
+      }
 
-      const res = await fetch(`${AUTH_BASE}/signup`, {
-        method: "POST",
+      const res = await fetch(`${API_BASE}/me`, {
+        method: "PUT",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
         const text = await res.text().catch(() => "");
-        throw new Error(text || `Signup failed (${res.status})`);
+        throw new Error(text || `Update failed (${res.status})`);
       }
 
-      const data = await res.json();
-      if (data?.token) {
-        localStorage.setItem("token", data.token);
-        window.dispatchEvent(new Event("app:auth"));
-      }
-      console.log("Signup success:", data);
+      // Refresh form with server-truth profile
+      await fetchAndFillProfile();
+      console.log("Profile updated");
     } catch (e) {
-      console.error("Signup error", e);
-      setErr(e?.message || "Signup failed");
+      console.error("Update error", e);
+      setErr(e?.message || "Update failed");
     } finally {
       setLoading(false);
     }
   };
+
+
+
 
   // If not authenticated, prompt sign-in and hide form
   if (!authToken) {
@@ -662,7 +680,7 @@ export default function Form() {
                   }
                   onBlur={() => markTouched("email")}
                   required
-                  disabled={disableUI}
+                  disabled={true}
                 />
               </div>
 
@@ -678,7 +696,7 @@ export default function Form() {
                     onBlur={() => markTouched("phone")}
                     inputMode="numeric"
                     required
-                    disabled={disableUI}
+                    disabled={true}
                   />
                   {touched.phone && phoneInvalid && (
                     <div className={s.errorText}>{phoneErr || S.phone_required}</div>
@@ -1118,7 +1136,7 @@ export default function Form() {
               <div className={s.row}>
                 <label className={s.label}>{S.final_notes_label}</label>
                 <textarea
-                  className={`${s.textarea} ${touched.finalNotes && requiredInvalid(finalNotes) ? s.invalid : ""}`}
+                  className={`${s.textarea} ${touched.finalNotes}`}
                   rows={4}
                   placeholder={S.final_notes_ph}
                   value={finalNotes}

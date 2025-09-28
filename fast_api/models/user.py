@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 class Education(BaseModel):
     school: Optional[str]
@@ -31,6 +31,7 @@ class User(BaseModel):
     disability: Optional[str] = "None"
     embedding: List[float] = None
     history: List[str] = [] # stores job IDs of applied jobs
+    prior: Dict[str, float] = {} # stores prior preferences like {job_id: str, probability: float}
 
 class UserOut(BaseModel):
     name: str
@@ -44,6 +45,7 @@ class UserOut(BaseModel):
     experience: Optional[List[Experience]] = []
     gender: Optional[str] = None
     disability: Optional[str] = "None"
+    prior: Optional[Dict[str, float]] = {}
 
 class UserLogin(BaseModel):
     email: EmailStr

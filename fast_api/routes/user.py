@@ -2,6 +2,8 @@
 from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel, EmailStr
 from typing import List, Dict, Any
+from model import get_prior, update_prior
+from services.recommendation_service import get_recommendations_for_user
 from models.user import UserOut, UserUpdate
 from models.job import Job
 from db import db
@@ -25,6 +27,9 @@ class HistoryResponse(BaseModel):
     job_id: str = None
     history_count: int
 
+class PriorUpdateRequest(BaseModel):
+    job_id: str
+
 def get_current_user_email(request: Request) -> str:
     auth_header = request.headers.get("authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
@@ -46,6 +51,7 @@ async def get_me(current_email: str = Depends(get_current_user_email)):
         {"email": current_email},
         {"_id": 0, "password": 0, "embedding": 0}
     )
+    print(doc["prior"])
     if not doc:
         raise HTTPException(status_code=404, detail="User not found")
     # If skills is a list, convert to comma-separated string if your UserOut expects str
@@ -119,5 +125,34 @@ async def get_recommendations(current_email: str = Depends(get_current_user_emai
     if not user or "embedding" not in user:
         raise HTTPException(status_code=404, detail="User not found or embedding missing")
 
-    response = await get_recommendations_for_user(db, user["embedding"])
+    response = await get_recommendations_for_user(db, user)
     return response
+
+@router.post("/recommendations", response_model=dict)
+async def update_priorities(
+    request: PriorUpdateRequest, current_email: str = Depends(get_current_user_email)
+):
+    """
+    Updates prior based on currently applied jobs and profile embedding.
+    """
+    user = await db.users.find_one({"email": current_email})
+    job = await db.jobs.find_one({"id": request.job_id})
+    if not job or "embedding" not in job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if not user or "embedding" not in user:
+        raise HTTPException(status_code=404, detail="User not found or embedding missing")
+    new_prior = await update_prior(db, user["prior"], job["embedding"])
+    await db.users.update_one({"email": current_email}, {"$set": {"prior": new_prior}})
+    return {"message": "Priorities updated successfully"}
+
+@router.get("/recommendations/reset", response_model=dict)
+async def reset_recommendations(current_email: str = Depends(get_current_user_email)):
+    """Reset user recommendations to initial state"""
+    user = await db.users.find_one({"email": current_email})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Reset the user's prior distribution
+    new_prior = await get_prior(db, user["embedding"]) if "embedding" in user else {}
+    await db.users.update_one({"email": current_email}, {"$set": {"prior": new_prior}})
+    return {"message": "Recommendations reset successfully"}

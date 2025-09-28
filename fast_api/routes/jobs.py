@@ -1,4 +1,3 @@
-
 from fastapi import APIRouter, Depends, Query, Request, HTTPException
 from typing import List
 from models.job import Job
@@ -44,5 +43,5 @@ async def delete_existing_job(job_id: str, user: str = Depends(get_current_user)
     return await delete_job(db, job_id)
 
 @router.post("/embed", response_model=dict)
-async def create_job_embedding(user: str = Depends(get_current_user)):
+async def create_job_embedding():  # Removed user dependency
     return await create_embedding(db)

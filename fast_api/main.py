@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from routes import auth, jobs, user, translate
+from routes import auth, jobs, user#, translate
 from config.auth_filter import auth_filter
 import dotenv
 
@@ -27,6 +27,7 @@ async def global_auth_middleware(request: Request, call_next):
         "/api/translate",  # if translation should be public
         "/healthz",
         "/",
+        "/jobs/embed",  # Allow embed jobs endpoint
     )
     if path == "/" or any(path.startswith(p) for p in public_prefixes):
         return await call_next(request)
@@ -42,7 +43,7 @@ async def global_auth_middleware(request: Request, call_next):
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
 app.include_router(user.router, prefix="/user", tags=["user"])
-app.include_router(translate.router, prefix="/api", tags=["translate"])
+# app.include_router(translate.router, prefix="/api", tags=["translate"])
 
 # 3) CORS: add LAST so it is the OUTERMOST and handles preflight first
 origins = [

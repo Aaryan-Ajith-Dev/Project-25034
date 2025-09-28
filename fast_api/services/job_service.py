@@ -1,4 +1,5 @@
 from fastapi import HTTPException
+from services.recommendation_service import del_prior_for_all_users, set_prior_for_all_users
 from models.job import Job
 from model import get_embedding, job_to_text
 import numpy as np
@@ -35,19 +36,25 @@ async def create_job(db, job: Job):
         raise HTTPException(status_code=409, detail="Job already exists")
     job.embedding = get_embedding(job_to_text(job)).tolist()
     await db.jobs.insert_one(job.dict())
+    # Too heavy?
+    await set_prior_for_all_users(db, job.dict())
     return job
 
 async def update_job(db, job_id: str, job: Job):
     result = await db.jobs.replace_one({"id": job_id}, job.dict())
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Job not found")
-    await db.jobs.update_one({"id": job_id}, {"$set": {"embedding": get_embedding(job_to_text(job)).tolist()}})
+    # udpate job
+    job.embedding = get_embedding(job_to_text(job)).tolist()
+    await db.jobs.update_one({"id": job_id}, {"$set": {"embedding": job.embedding}})
+    await set_prior_for_all_users(db, job.dict())
     return job
 
 async def delete_job(db, job_id: str):
     result = await db.jobs.delete_one({"id": job_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Job not found")
+    await del_prior_for_all_users(db, job_id)
     return {"msg": "Job deleted"}
 
 

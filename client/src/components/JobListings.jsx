@@ -1,11 +1,20 @@
 // src/pages/JobListings.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import s from "../styles/JobListings.module.css";
-import { translateBatch } from "../lib/translateClient";
 
-// Backed by FastAPI router mounted at prefix "/jobs" in main.py
-// Override with VITE_API_BASE (e.g., "http://127.0.0.1:8000")
+// 1) Load Shepherd default CSS FIRST (layout), our inline styles will override it at runtime
+import "shepherd.js/dist/css/shepherd.css";
+
+// 2) Page CSS module for the rest of the page
+import s from "../styles/JobListings.module.css";
+
+import { translateBatch } from "../lib/translateClient";
+import Shepherd from "shepherd.js";
+
+// API base
 const JOBS_API = (import.meta.env.VITE_API_BASE || "") + "/jobs";
+const HISTORY_API = (import.meta.env.VITE_API_BASE || "") + "/user/history";
+const RECS_API = (import.meta.env.VITE_API_BASE || "") + "/user/recommendations";
+
 
 // UI strings (translatable)
 const BASE = {
@@ -39,12 +48,48 @@ const BASE = {
   withdraw_title: "Withdraw application",
   apply_title: "Apply to this job",
   per: "per",
+
+  // Tour i18n (expanded)
+  tour_start_label: "Tour",
+  tour_welcome_title: "Welcome",
+  tour_welcome_desc: "A quick guided tour of the Jobs page.",
+  tour_step_search_title: "Search",
+  tour_step_search_desc: "Search jobs by position or company.",
+  tour_step_info_title: "Summary",
+  tour_step_info_desc: "This line shows how many jobs are shown and total count.",
+  tour_step_top_title: "Top matches",
+  tour_step_top_desc: "Toggle to see the all jobs or get top 5 best suited jobs for you.",
+  tour_step_list_title: "Job list",
+  tour_step_list_desc: "Pick a job to view details on the right.",
+  tour_step_item_title: "A job item",
+  tour_step_item_desc: "Each item shows the title, company, location, and tags.",
+  tour_step_details_title: "Details panel",
+  tour_step_details_desc: "Full job details for the selected item appear here.",
+  tour_step_tags_title: "Tags",
+  tour_step_tags_desc: "Employment type, seniority and salary range.",
+  tour_step_desc_title: "Description",
+  tour_step_desc_desc: "The job description is shown here.",
+  tour_step_skills_title: "Skills",
+  tour_step_skills_desc: "Any Skills or requirements show up here.",
+  tour_step_comp_title: "Compensation",
+  tour_step_comp_desc: "Min/Max with currency and pay period when available.",
+  tour_step_views_title: "Views",
+  tour_step_views_desc: "View count for this job (if provided).",
+  tour_step_apply_title: "Apply / Withdraw",
+  tour_step_apply_desc: "Toggle the application state for this job.",
+  tour_step_link_title: "External posting",
+  tour_step_link_desc: "Open the original posting in a new tab.",
+  tour_step_pagination_title: "Pagination",
+  tour_step_pagination_desc: "Navigate across pages of results.",
+  tour_done_title: "All set!",
+  tour_done_desc: "Use the Tour button anytime for a refresher.",
 };
 
 // Normalize one MongoDB document into UI-friendly job object
 function normalizeJob(doc, idx) {
   const row = doc || {};
-  const idFromDoc = row._id && typeof row._id === "object" && row._id.$oid ? row._id.$oid : row._id;
+  const idFromDoc =
+    row._id && typeof row._id === "object" && row._id.$oid ? row._id.$oid : row._id;
   const id = idFromDoc || row.id || `job-${idx}`;
   return {
     id: String(id || "").trim(),
@@ -67,8 +112,7 @@ function normalizeJob(doc, idx) {
 // Tiny, accessible switch styled by CSS module
 function TinySwitch({ checked, onChange, label, disabled = false }) {
   const toggle = () => {
-    if (disabled) return;
-    onChange(!checked);
+    if (!disabled) onChange(!checked);
   };
   const onKeyDown = (e) => {
     if (disabled) return;
@@ -78,7 +122,7 @@ function TinySwitch({ checked, onChange, label, disabled = false }) {
     }
   };
   return (
-    <div className={s.switchRow}>
+    <div className={`${s.switchRow}`}>
       <button
         type="button"
         role="switch"
@@ -109,7 +153,7 @@ export default function JobListings() {
   const [inputQ, setInputQ] = useState("");
   const [q, setQ] = useState("");
 
-  // "Top matches" mode (first 5 from server/global list)
+  // “Top matches” mode (first 5 from server/global list)
   const [topOnly, setTopOnly] = useState(true);
 
   // Client-side pagination config
@@ -117,7 +161,7 @@ export default function JobListings() {
   const pageSize = topOnly ? 5 : pageSizeBase;
 
   // Data state
-  const [allJobs, setAllJobs] = useState([]); // cache of all jobs fetched
+  const [allJobs, setAllJobs] = useState([]);
   const [total, setTotal] = useState(0);
   const [pages, setPages] = useState({});
   const [currentPage, setCurrentPage] = useState(0);
@@ -125,21 +169,15 @@ export default function JobListings() {
   const [loading, setLoading] = useState(true);
   const [loadErr, setLoadErr] = useState("");
 
-  // Track applied jobs (persist to localStorage)
-  const [appliedIds, setAppliedIds] = useState(() => {
-    try {
-      const raw = localStorage.getItem("appliedJobs") || "[]";
-      const list = JSON.parse(raw);
-      return new Set(Array.isArray(list) ? list : []);
-    } catch {
-      return new Set();
-    }
-  });
+  // Server-tracked applied job ids
+  const [appliedIds, setAppliedIds] = useState(new Set());
+  const [isMutating, setIsMutating] = useState(false);
 
   const lastQueryRef = useRef("");
-
-  // Translation cache for job content: key = `${lang}::${text}` -> translated
   const [tCache, setTCache] = useState({});
+
+  // Shepherd tour instance
+  const tourRef = useRef(null);
 
   // Helpers
   const cacheKey = (text) => `${lang}::${text}`;
@@ -149,20 +187,359 @@ export default function JobListings() {
     return tCache[k] ?? text;
   };
 
+  // Auth helpers (Bearer)
+  const getToken = () =>
+    localStorage.getItem("access_token") ||
+    localStorage.getItem("token") ||
+    sessionStorage.getItem("access_token") ||
+    "";
+
+  const authHeaders = () => {
+    const token = getToken();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
+
+  // Accent fallback
+  const getAccent = () => {
+    try {
+      const v = getComputedStyle(document.documentElement)
+        .getPropertyValue("--accent")
+        .trim();
+      return v || "#f97316";
+    } catch {
+      return "#f97316";
+    }
+  };
+
+  // Inline theming utilities
+  const styleOverlay = () => {
+    const ov = document.querySelector(".shepherd-modal-overlay-container");
+    if (ov) {
+      ov.style.background = "rgba(15,23,42,.42)";
+      // Keep overlay below the step, above the app
+      ov.style.zIndex = "10020";
+      ov.style.pointerEvents = "auto";
+    }
+  };
+
+  const unstyleOverlay = () => {
+    const ov = document.querySelector(".shepherd-modal-overlay-container");
+    if (ov) {
+      ov.style.background = "";
+      ov.style.zIndex = "";
+      ov.style.pointerEvents = "";
+    }
+  };
+
+  const styleButtons = (container) => {
+    const accent = getAccent();
+    const btns = container.querySelectorAll(".shepherd-button");
+    btns.forEach((b) => {
+      b.style.display = "inline-flex";
+      b.style.alignItems = "center";
+      b.style.justifyContent = "center";
+      b.style.gap = "6px";
+      b.style.fontWeight = "700";
+      b.style.borderRadius = "10px";
+      b.style.padding = "8px 12px";
+      b.style.border = "1px solid transparent";
+      b.style.cursor = "pointer";
+      b.style.transition =
+        "background-color .18s ease, color .18s ease, border-color .18s ease, box-shadow .18s ease";
+      b.style.minWidth = "72px";
+
+      if (b.classList.contains("shepherd-button-primary")) {
+        b.style.background = accent;
+        b.style.color = "#fff";
+        b.style.borderColor = accent;
+        b.style.boxShadow = "0 3px 8px rgba(249,115,22,.25)";
+      } else {
+        // Treat anything else as secondary
+        b.classList.add("shepherd-button-secondary");
+        b.style.background = "#fff";
+        b.style.color = accent;
+        b.style.borderColor = accent;
+      }
+    });
+  };
+
+  const getTargetEl = (step) => {
+    const at = step?.options?.attachTo;
+    const sel = (at && (typeof at === "string" ? at : at.element)) || null;
+    if (!sel) return null;
+    try {
+      return document.querySelector(sel);
+    } catch {
+      return null;
+    }
+  };
+
+  const addTargetOutline = (step) => {
+    const el = getTargetEl(step);
+    if (!el) return;
+    el.dataset.prevOutline = el.style.outline || "";
+    el.dataset.prevOutlineOffset = el.style.outlineOffset || "";
+    el.dataset.prevBorderRadius = el.style.borderRadius || "";
+    el.style.outlineOffset = "2px";
+    el.style.borderRadius = "10px";
+  };
+
+  const removeTargetOutline = (step) => {
+    const el = getTargetEl(step);
+    if (!el) return;
+    el.style.outline = el.dataset.prevOutline || "";
+    el.style.outlineOffset = el.dataset.prevOutlineOffset || "";
+    el.style.borderRadius = el.dataset.prevBorderRadius || "";
+    delete el.dataset.prevOutline;
+    delete el.dataset.prevOutlineOffset;
+    delete el.dataset.prevBorderRadius;
+  };
+
+  const styleStepChrome = (step) => {
+    const el = step.getElement?.();
+    if (!el) return;
+
+    // Container
+    el.style.borderRadius = "12px";
+    el.style.border = "1px solid var(--ring)";
+    el.style.boxShadow = "0 12px 24px rgba(15,23,42,.15)";
+    el.style.color = "var(--ink)";
+    el.style.background = "#fff";
+    el.style.zIndex = "10030";
+    el.style.maxWidth = "min(92vw, 420px)";
+    el.style.pointerEvents = "auto";
+
+    // Header
+    const header = el.querySelector(".shepherd-header");
+    if (header) {
+      header.style.background = "#fff";
+      header.style.borderBottom = "1px solid var(--ring)";
+      header.style.padding = "10px 12px";
+      header.style.position = "relative";
+    }
+
+    // Title
+    const title = el.querySelector(".shepherd-title");
+    if (title) {
+      title.style.fontFamily =
+        `'Khand', -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, sans-serif`;
+      title.style.fontWeight = "900";
+      title.style.color = "var(--ink)";
+      title.style.fontSize = "16px";
+    }
+
+    // Body text
+    const text = el.querySelector(".shepherd-text");
+    if (text) {
+      text.style.padding = "10px 12px";
+      text.style.color = "black";
+      text.style.lineHeight = "1.5";
+    }
+
+    // Footer
+    const footer = el.querySelector(".shepherd-footer");
+    if (footer) {
+      footer.style.padding = "10px 12px 12px";
+      footer.style.display = "flex";
+      footer.style.gap = "8px";
+      footer.style.justifyContent = "flex-end";
+      footer.style.flexWrap = "wrap";
+    }
+
+    // Buttons
+    styleButtons(el);
+
+    // Cancel icon
+    const cancel = el.querySelector(".shepherd-cancel-icon");
+    if (cancel) {
+      cancel.style.color = "var(--muted)";
+      cancel.addEventListener(
+        "mouseenter",
+        () => {
+          cancel.style.color = "var(--ink)";
+        },
+        { once: true }
+      );
+    }
+
+    // Overlay each show
+    styleOverlay();
+  };
+
+  // Build Shepherd steps using translated text
+  const buildTour = () => {
+    if (tourRef.current?.isActive?.()) {
+      tourRef.current.cancel();
+    }
+
+    // Floating UI middleware builder (guards CDN/availability)
+    const buildFloatingUIMiddleware = () => {
+      const m = [];
+      const F = window?.FloatingUIDOM;
+      if (F?.offset) m.push(F.offset({ mainAxis: 12, crossAxis: 0 }));
+      if (F?.flip) m.push(F.flip());
+      if (F?.shift) m.push(F.shift({ padding: 8 }));
+      return m;
+    };
+
+    const tour = new Shepherd.Tour({
+      defaultStepOptions: {
+        cancelIcon: { enabled: true },
+        scrollTo: { behavior: "smooth", block: "center" },
+        classes: "tour-step",
+        floatingUIOptions: {
+          middleware: buildFloatingUIMiddleware(),
+        },
+        when: {
+          show() {
+            styleStepChrome(this);
+            addTargetOutline(this);
+          },
+          hide() {
+            removeTargetOutline(this);
+          },
+        },
+      },
+      useModalOverlay: true,
+    });
+
+    // Reusable default buttons (used for steps without explicit buttons)
+    const defaultButtons = [
+      { text: S.prev, action: tour.back, classes: "shepherd-button-secondary" },
+      { text: S.next, action: tour.next, classes: "shepherd-button-primary" },
+    ];
+
+    // Welcome (centered; no attachTo)
+    tour.addStep({
+      id: "welcome",
+      title: S.tour_welcome_title,
+      text: S.tour_welcome_desc,
+      buttons: [
+        { text: S.prev, action: tour.cancel, classes: "shepherd-button-secondary" },
+        { text: S.next, action: tour.next, classes: "shepherd-button-primary" },
+      ],
+    });
+
+    const steps = [
+      {
+        id: "search",
+        attachTo: { element: ".jr-search", on: "bottom" },
+        title: S.tour_step_search_title,
+        text: S.tour_step_search_desc,
+        canClickTarget: true,
+      },
+      {
+        id: "info",
+        attachTo: { element: ".jr-info", on: "bottom" },
+        title: S.tour_step_info_title,
+        text: S.tour_step_info_desc,
+      },
+      {
+        id: "top",
+        attachTo: { element: ".jr-top", on: "left" },
+        title: S.tour_step_top_title,
+        text: S.tour_step_top_desc,
+      },
+      {
+        id: "list",
+        attachTo: { element: ".jr-list", on: "right" },
+        title: S.tour_step_list_title,
+        text: S.tour_step_list_desc,
+      },
+      {
+        id: "item",
+        attachTo: { element: ".jr-item", on: "right" },
+        title: S.tour_step_item_title,
+        text: S.tour_step_item_desc,
+      },
+      {
+        id: "details",
+        attachTo: { element: ".jr-title", on: "bottom" },
+        title: S.tour_step_details_title,
+        text: S.tour_step_details_desc,
+      },
+      {
+        id: "tags",
+        attachTo: { element: ".jr-tags", on: "bottom" },
+        title: S.tour_step_tags_title,
+        text: S.tour_step_tags_desc,
+      },
+      {
+        id: "desc",
+        attachTo: { element: ".jr-desc", on: "top" },
+        title: S.tour_step_desc_title,
+        text: S.tour_step_desc_desc,
+      },
+      {
+        id: "skills",
+        attachTo: { element: ".jr-skills", on: "top" },
+        title: S.tour_step_skills_title,
+        text: S.tour_step_skills_desc,
+      },
+      {
+        id: "comp",
+        attachTo: { element: ".jr-comp", on: "top" },
+        title: S.tour_step_comp_title,
+        text: S.tour_step_comp_desc,
+      },
+      {
+        id: "views",
+        attachTo: { element: ".jr-views", on: "left" },
+        title: S.tour_step_views_title,
+        text: S.tour_step_views_desc,
+      },
+      {
+        id: "apply",
+        attachTo: { element: ".jr-applyBtn", on: "left" },
+        title: S.tour_step_apply_title,
+        text: S.tour_step_apply_desc,
+        canClickTarget: true,
+      },
+      // Closing step (no attachTo)
+      {
+        id: "done",
+        title: S.tour_done_title,
+        text: S.tour_done_desc,
+        buttons: [{ text: S.next, action: tour.cancel, classes: "shepherd-button-primary" }],
+      },
+    ].map((st) => {
+      // Add default buttons when a step doesn't define its own
+      if (!st.buttons) st.buttons = defaultButtons;
+      return st;
+    });
+
+    tour.addSteps(steps);
+
+    // Ensure overlay gets themed on start and cleaned up on end
+    tour.on("start", styleOverlay);
+    tour.on("complete", unstyleOverlay);
+    tour.on("cancel", unstyleOverlay);
+
+    tourRef.current = tour;
+  };
+
+  const startTour = () => {
+    buildTour();
+    requestAnimationFrame(() => {
+      tourRef.current?.start();
+    });
+  };
+
+  // Listen for language changes (page-scoped)
   useEffect(() => {
     const onLang = (e) => {
       const l = (e?.detail && e.detail.code) || localStorage.getItem("lang") || "en";
       setLang(l);
     };
     window.addEventListener("app:lang", onLang);
-    window.addEventListener("storage", onLang); // still useful for other tabs
+    window.addEventListener("storage", onLang);
     return () => {
       window.removeEventListener("app:lang", onLang);
       window.removeEventListener("storage", onLang);
     };
   }, []);
 
-  // 2) Reset translation cache when language changes
+  // Reset translation cache when language changes
   useEffect(() => {
     setTCache({});
   }, [lang]);
@@ -213,14 +590,13 @@ export default function JobListings() {
     return docs.map((d, i) => normalizeJob(d, i));
   }
 
-  // Filter endpoint that accepts repeated ?search=
   async function fetchFilteredBySearch(queryString) {
     const terms = (queryString || "")
       .split(/[,\s]+/)
       .map((t) => t.trim())
       .filter(Boolean);
     const params = new URLSearchParams();
-    for (const t of terms) params.append("search", t); // ?search=a&search=b
+    for (const t of terms) params.append("search", t);
     const url = `${JOBS_API}/filter?${params.toString()}`;
     const res = await fetch(url, { headers: { Accept: "application/json" } });
     if (!res.ok) throw new Error(`Filter API ${res.status}`);
@@ -228,6 +604,42 @@ export default function JobListings() {
     const docs = Array.isArray(data) ? data : [];
     return docs.map((d, i) => normalizeJob(d, i));
   }
+
+  // Load applied ids from server (never fail job load if this errors)
+  async function fetchAppliedFromServerSafe() {
+    try {
+      const res = await fetch(`${HISTORY_API}/`, {
+        method: "GET",
+        headers: { Accept: "application/json", ...authHeaders() },
+      });
+      if (!res.ok) return new Set();
+      const items = await res.json();
+      const ids = new Set(
+        (Array.isArray(items) ? items : []).map((j) => {
+          const id = j?._id?.$oid || j?._id || j?.id || j?.job_id;
+          return String(id || "").trim();
+        })
+      );
+      return ids;
+    } catch {
+      return new Set();
+    }
+  }
+
+  async function fetchRecommendationsFromServer() {
+    const res = await fetch(`${RECS_API}`, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        ...authHeaders(),
+      },
+    });
+    if (!res.ok) throw new Error(`Recommendations API ${res.status}`);
+    const data = await res.json();
+    const docs = Array.isArray(data) ? data : [];
+    return docs.map((d, i) => normalizeJob(d, i));
+  }
+
 
   function materializePages(jobs) {
     const paged = {};
@@ -249,38 +661,46 @@ export default function JobListings() {
     setSelected(null);
     setTotal(0);
     try {
-      let jobs = [];
       const qNow = (query || "").trim();
+
       if (qNow) {
-        jobs = await fetchFilteredBySearch(qNow);
-      } else {
-        const all = await fetchAllFromServer();
-        jobs = all;
-        setAllJobs(all);
-      }
-      if (top) {
-        const top5 = jobs.slice(0, 5);
-        materializePages(top5);
-      } else {
+        // Searching: ignore top-only and fetch by search
+        const jobs = await fetchFilteredBySearch(qNow);
         materializePages(jobs);
+      } else if (top) {
+        // Top matches: try personalized recommendations
+        try {
+          const recs = await fetchRecommendationsFromServer();
+          const jobs = recs.slice(0, 5);
+          materializePages(jobs);
+        } catch {
+          // Fallback: use first 5 from global list
+          const all = await fetchAllFromServer();
+          setAllJobs(all);
+          const top5 = all.slice(0, 5);
+          materializePages(top5);
+        }
+      } else {
+        // Default: full list
+        const all = await fetchAllFromServer();
+        setAllJobs(all);
+        materializePages(all);
       }
-    } catch (e) {
+    } catch {
       setLoadErr(S.failed_load || "Failed to load job listings.");
     } finally {
+      // Seed applied ids from server but never break UI on error
+      fetchAppliedFromServerSafe().then(setAppliedIds);
       setLoading(false);
     }
   }
 
-  // Auto-disable "Top matches" when searching: force it off
+
   const isSearching = !!(q || "").trim();
   useEffect(() => {
-    if (isSearching && topOnly) {
-      setTopOnly(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (isSearching && topOnly) setTopOnly(false);
   }, [isSearching]);
 
-  // Load when query or toggle changes
   useEffect(() => {
     const qNow = (q || "").trim();
     if (qNow === lastQueryRef.current) {
@@ -295,37 +715,119 @@ export default function JobListings() {
       loadInitial(qNow, topOnly);
     }, 200);
     return () => clearTimeout(tId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q, topOnly, S.failed_load]);
 
   const currentItems = useMemo(() => pages[currentPage] || [], [pages, currentPage]);
-  const totalPages = useMemo(() => (total <= 0 ? 0 : Math.ceil(total / pageSize)), [total, pageSize]);
+  const totalPages = useMemo(
+    () => (total <= 0 ? 0 : Math.ceil(total / pageSize)),
+    [total, pageSize]
+  );
   const canPrev = currentPage > 0;
   const canNext = totalPages > 0 && currentPage < totalPages - 1;
 
-  // Helper: currency formatting for min/max salary
   function formatMoney(n, curr) {
     if (n == null || n === "") return null;
     if (!curr) return String(n);
     try {
-      return new Intl.NumberFormat(undefined, { style: "currency", currency: curr }).format(Number(n));
+      return new Intl.NumberFormat(undefined, { style: "currency", currency: curr }).format(
+        Number(n)
+      );
     } catch {
       return `${curr} ${n}`;
     }
   }
 
-  // Toggle Apply/Withdraw
-  function toggleApply(job) {
-    const next = new Set(appliedIds);
-    if (next.has(job.id)) next.delete(job.id);
-    else next.add(job.id);
-    setAppliedIds(next);
-    try {
-      localStorage.setItem("appliedJobs", JSON.stringify(Array.from(next)));
-    } catch {}
+  // Build a compact snapshot to send optionally with POST /history
+  function snapshotFrom(job) {
+    if (!job) return null;
+    return {
+      id: job.id,
+      title: job.title,
+      company: job.company,
+      location: job.location,
+      employmentType: job.employmentType,
+      seniority: job.seniority,
+      description: job.description,
+      skills: job.skills,
+      salaryMin: job.salaryMin,
+      salaryMax: job.salaryMax,
+      currency: job.currency,
+      posted: job.posted,
+      url: job.url,
+    };
   }
 
-  // Helper to build compact pagination items (first, window around current, last)
+  // Apply via POST /history with fallback retry (only job_id) on schema errors
+  async function applyJob(job) {
+    if (!job?.id) return;
+    setIsMutating(true);
+    setLoadErr("");
+    const bodyWithSnapshot = { job_id: job.id, job: snapshotFrom(job) };
+    const bodyJustId = { job_id: job.id };
+    try {
+      let res = await fetch(`${HISTORY_API}`, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          ...authHeaders(),
+        },
+        body: JSON.stringify(bodyWithSnapshot),
+      });
+      if (res.status === 422) {
+        res = await fetch(`${HISTORY_API}`, {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+            ...authHeaders(),
+          },
+          body: JSON.stringify(bodyJustId),
+        });
+      }
+      if (!res.ok) throw new Error(`Apply failed ${res.status}`);
+      setAppliedIds((prev) => new Set(prev).add(job.id));
+    } catch {
+      setLoadErr("Failed to apply.");
+    } finally {
+      setIsMutating(false);
+    }
+  }
+
+  // Withdraw via DELETE /history/{job_id}
+  async function withdrawJob(job) {
+    if (!job?.id) return;
+    setIsMutating(true);
+    setLoadErr("");
+    try {
+      const res = await fetch(`${HISTORY_API}/${encodeURIComponent(job.id)}`, {
+        method: "DELETE",
+        headers: {
+          Accept: "application/json",
+          ...authHeaders(),
+        },
+      });
+      if (!res.ok) throw new Error(`Withdraw failed ${res.status}`);
+      setAppliedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(job.id);
+        return next;
+      });
+    } catch {
+      setLoadErr("Failed to withdraw.");
+    } finally {
+      setIsMutating(false);
+    }
+  }
+
+  // Button dispatcher
+  function onApplyToggle(job) {
+    if (!job) return;
+    const isApplied = appliedIds.has(job.id);
+    if (isApplied) withdrawJob(job);
+    else applyJob(job);
+  }
+
   function buildPageWindow(total, current, delta = 2) {
     const set = new Set([0, total - 1]);
     const start = Math.max(0, current - delta);
@@ -334,7 +836,7 @@ export default function JobListings() {
     return Array.from(set).sort((a, b) => a - b);
   }
 
-  // Translate current page job fields + selected job nested fields (batch + de-dup per language)
+  // Translate page content (batch + de-dup)
   useEffect(() => {
     let active = true;
     let ctrl = new AbortController();
@@ -344,16 +846,15 @@ export default function JobListings() {
     const push = (v) => {
       if (!v || typeof v !== "string") return;
       const trimmed = v.trim();
-      if (!trimmed) return;
+      if (!trimmed || trimmed.length < 2) return;
       const k = cacheKey(trimmed);
-      if (tCache[k]) return; // already translated
+      if (tCache[k]) return;
       if (!seen.has(trimmed)) {
         seen.add(trimmed);
         texts.push(trimmed);
       }
     };
 
-    // Add current page job fields
     for (const j of currentItems) {
       push(j.title);
       push(j.company);
@@ -363,9 +864,36 @@ export default function JobListings() {
       push(j.description);
       push(j.skills);
       push(j.posted);
+      if (typeof j.salaryMin === "string") push(j.salaryMin);
+      if (typeof j.salaryMax === "string") push(j.salaryMax);
+      if (j.raw) {
+        const extractAllStrings = (obj, maxDepth = 3, depth = 0) => {
+          if (!obj || typeof obj !== "object" || depth >= maxDepth) return;
+          for (const [key, val] of Object.entries(obj)) {
+            if (typeof val === "string" && val.trim().length > 1) {
+              const lowerKey = key.toLowerCase();
+              const tv = val.trim();
+              if (
+                !lowerKey.includes("id") &&
+                !lowerKey.includes("url") &&
+                !lowerKey.includes("email") &&
+                !lowerKey.includes("phone") &&
+                !lowerKey.includes("currency") &&
+                !/^\d+(\.\d+)?$/.test(tv) &&
+                !/^https?:\/\//.test(tv) &&
+                !/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(tv)
+              ) {
+                push(val);
+              }
+            } else if (typeof val === "object" && val !== null) {
+              extractAllStrings(val, maxDepth, depth + 1);
+            }
+          }
+        };
+        extractAllStrings(j.raw);
+      }
     }
 
-    // Add selected job nested fields
     if (selected) {
       push(selected.title);
       push(selected.company);
@@ -375,26 +903,52 @@ export default function JobListings() {
       push(selected.description);
       push(selected.skills);
       push(selected.posted);
-      
-      // Nested raw fields
-      const rraw = selected.raw?.raw || {};
-      push(rraw.skills_desc);
-      push(rraw.pay_period);
-      push(rraw.payPeriod);
-      
-      // Any other nested strings from raw
+      if (typeof selected.salaryMin === "string") push(selected.salaryMin);
+      if (typeof selected.salaryMax === "string") push(selected.salaryMax);
       if (selected.raw) {
-        const addFromObj = (obj) => {
-          if (!obj || typeof obj !== "object") return;
-          for (const val of Object.values(obj)) {
-            if (typeof val === "string") {
-              push(val);
+        const rraw = selected.raw.raw || {};
+        push(rraw.skills_desc);
+        push(rraw.pay_period);
+        push(rraw.payPeriod);
+        push(rraw.job_description);
+        push(rraw.requirements);
+        push(rraw.benefits);
+        push(rraw.qualifications);
+        push(rraw.responsibilities);
+        push(rraw.company_description);
+        push(rraw.department);
+        push(rraw.industry);
+        push(rraw.work_type);
+        push(rraw.experience_level);
+
+        const extractAllStrings = (obj, maxDepth = 4, depth = 0) => {
+          if (!obj || typeof obj !== "object" || depth >= maxDepth) return;
+          for (const [key, val] of Object.entries(obj)) {
+            if (typeof val === "string" && val.trim().length > 2) {
+              const lowerKey = key.toLowerCase();
+              const tv = val.trim();
+              if (
+                !lowerKey.includes("id") &&
+                !lowerKey.includes("url") &&
+                !lowerKey.includes("link") &&
+                !lowerKey.includes("email") &&
+                !lowerKey.includes("phone") &&
+                !lowerKey.includes("currency") &&
+                !lowerKey.includes("code") &&
+                !/^\d+(\.\d+)?$/.test(tv) &&
+                !/^https?:\/\//.test(tv) &&
+                !/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(tv) &&
+                !/^\+?[\d\s\-\(\)]+$/.test(tv) &&
+                !/^[A-Z]{3}$/.test(tv)
+              ) {
+                push(val);
+              }
             } else if (typeof val === "object" && val !== null) {
-              addFromObj(val);
+              extractAllStrings(val, maxDepth, depth + 1);
             }
           }
         };
-        addFromObj(selected.raw);
+        extractAllStrings(selected.raw);
       }
     }
 
@@ -402,35 +956,28 @@ export default function JobListings() {
       if (lang === "en" || texts.length === 0) return;
       try {
         const out = await translateBatch({
-          src: "auto",
+          src: "en",
           tgt: lang,
           texts,
           signal: ctrl.signal,
         });
-        if (!active) return;
         setTCache((prev) => {
           const next = { ...prev };
-          for (let i = 0; i < texts.length; i++) {
-            next[`${lang}::${texts[i]}`] = out[i] || texts[i];
-          }
+          for (let i = 0; i < texts.length; i++) next[`${lang}::${texts[i]}`] = out[i] || texts[i];
           return next;
         });
-      } catch {
-        // ignore translation failures; fall back to source text
-      }
+      } catch {}
     };
-
     run();
+
     return () => {
       active = false;
       ctrl.abort();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentItems, selected, lang]);
+  }, [currentItems, selected, lang]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Derive translated versions for current list and selected view
   const currentItemsT = useMemo(() => {
-    return currentItems.map((j) => ({
+    return currentItems.map((j, idx) => ({
       ...j,
       title: t(j.title),
       company: t(j.company),
@@ -440,9 +987,11 @@ export default function JobListings() {
       description: t(j.description),
       skills: t(j.skills),
       posted: t(j.posted),
+      salaryMin: typeof j.salaryMin === "string" ? t(j.salaryMin) : j.salaryMin,
+      salaryMax: typeof j.salaryMax === "string" ? t(j.salaryMax) : j.salaryMax,
+      __tourIndex: idx,
     }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentItems, tCache, lang]);
+  }, [currentItems, tCache, lang]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedT = useMemo(() => {
     if (!selected) return null;
@@ -456,14 +1005,13 @@ export default function JobListings() {
       description: t(selected.description),
       skills: t(selected.skills),
       posted: t(selected.posted),
+      salaryMin: typeof selected.salaryMin === "string" ? t(selected.salaryMin) : selected.salaryMin,
+      salaryMax: typeof selected.salaryMax === "string" ? t(selected.salaryMax) : selected.salaryMax,
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected, tCache, lang]);
+  }, [selected, tCache, lang]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Trim description to first line
   const briefDesc = (selectedT?.description || "").split("\n")[0];
 
-  // Views and compensation from nested raw (with translation)
   const views = selected?.raw?.raw?.views;
   const rraw = selected?.raw?.raw || {};
   const min = rraw.min_salary ?? rraw.salaryMin ?? null;
@@ -475,14 +1023,39 @@ export default function JobListings() {
   const formattedMax = formatMoney(max, curr);
   const hasRange = min != null || max != null;
 
+  // Build tour after UI strings translate so content is localized
+  useEffect(() => {
+    buildTour();
+    return () => {
+      if (tourRef.current?.isActive?.()) tourRef.current.cancel();
+      tourRef.current = null;
+    };
+  }, [S]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div className={s.wrap}>
+      {/* Page-scoped Tour dock (center top) */}
+      <div className={s.tourDock} role="region" aria-label="Page help">
+        <button
+          type="button"
+          className={`${s.tourBtn}`}
+          onClick={startTour}
+          aria-label={S.tour_start_label}
+          title={S.tour_start_label}
+        >
+          <span className={s.tourIcon} aria-hidden="true">
+            ❔
+          </span>
+          <span className={s.tourText}>{S.tour_start_label}</span>
+        </button>
+      </div>
+
       <aside className={s.left}>
         {/* Toolbar */}
         <div className={`${s.toolbar} ${s.toolbarStack}`}>
           <div className={s.searchWrap}>
             <input
-              className={s.search}
+              className={`${s.search} jr-search`}
               type="search"
               placeholder={S.search_ph}
               value={inputQ}
@@ -499,12 +1072,15 @@ export default function JobListings() {
             </button>
           </div>
 
-          <TinySwitch
-            checked={topOnly}
-            onChange={(enabled) => setTopOnly(enabled)}
-            label={`${S.top_matches} (5)`}
-            disabled={isSearching}
-          />
+          {/* Wrap top toggle to target in tour */}
+          <div className="jr-top">
+            <TinySwitch
+              checked={topOnly}
+              onChange={(enabled) => setTopOnly(enabled)}
+              label={`${S.top_matches} (5)`}
+              disabled={!!(q || "").trim()}
+            />
+          </div>
         </div>
 
         {loading && <div className={s.info}>{S.loading}</div>}
@@ -512,15 +1088,20 @@ export default function JobListings() {
 
         {!loading && !loadErr && (
           <>
-            <div className={s.info}>
-              {topOnly
-                ? `${S.top_matches} • ${Math.min(total || 0, 5)} ${S.jobs_word}`
-                : `${S.showing_prefix} ${pageSize * (currentPage + 1)} ${S.of} ${total} ${S.jobs_word}`}
+            <div className={`${s.info} jr-info`}>
+              {!q.trim()
+                ? topOnly
+                  ? `${S.top_matches} • ${Math.min(total || 0, 5)} ${S.jobs_word}`
+                  : `${S.showing_prefix} ${Math.min(
+                      total,
+                      pageSize * (currentPage + 1)
+                    )} ${S.of} ${total} ${S.jobs_word}`
+                : `${S.showing_prefix} ${total} ${S.jobs_word}`}
             </div>
 
             <div className={s.toolbar} style={{ borderBottom: "none", paddingTop: 0 }}>
               <button
-                className={`${s.btn} ${s.btnOutline}`}
+                className={`${s.btn} ${s.btnOutline} jr-prev`}
                 onClick={() => setCurrentPage((p) => Math.max(p - 1, 0))}
                 disabled={!canPrev}
                 aria-disabled={!canPrev}
@@ -528,7 +1109,7 @@ export default function JobListings() {
                 {S.prev}
               </button>
               <button
-                className={`${s.btn} ${s.btnOutline}`}
+                className={`${s.btn} ${s.btnOutline} jr-next`}
                 onClick={() => setCurrentPage((p) => (canNext ? p + 1 : p))}
                 disabled={!canNext}
                 aria-disabled={!canNext}
@@ -537,14 +1118,14 @@ export default function JobListings() {
               </button>
             </div>
 
-            <ul className={s.list} role="listbox" aria-label={S.list_aria}>
+            <ul className={`${s.list} jr-list`} role="listbox" aria-label={S.list_aria}>
               {currentItemsT.length === 0 ? (
                 <li className={s.hint}>{S.no_jobs_page}</li>
               ) : (
                 currentItemsT.map((j) => (
                   <li
                     key={j.id}
-                    className={`${s.item} ${selected?.id === j.id ? s.active : ""}`}
+                    className={`${s.item} jr-item ${selected?.id === j.id ? s.active : ""}`}
                     tabIndex={0}
                     role="option"
                     aria-selected={selected?.id === j.id}
@@ -563,9 +1144,8 @@ export default function JobListings() {
               )}
             </ul>
 
-            {/* Compact, Google-style pagination with ellipses */}
             {totalPages > 1 && (
-              <nav className={s.pageFooter} aria-label={S.pagination_aria}>
+              <nav className={`${s.pageFooter} jr-pagination`} aria-label={S.pagination_aria}>
                 {(() => {
                   const win = buildPageWindow(totalPages, currentPage, 2);
                   let last = null;
@@ -603,13 +1183,13 @@ export default function JobListings() {
           <article className={s.card}>
             <header className={`${s.header} ${s.headerRow}`}>
               <div className={s.headerMain}>
-                <h2 className={s.title}>{selectedT.title || S.untitled_job}</h2>
+                <h2 className={`${s.title} jr-title`}>{selectedT.title || S.untitled_job}</h2>
                 <div className={s.meta}>
                   <span className={s.company}>{selectedT.company || S.unknown_company}</span>
                   {selectedT.location && <span className={s.dot}>•</span>}
                   {selectedT.location && <span>{selectedT.location}</span>}
                 </div>
-                <div className={s.tags}>
+                <div className={`${s.tags} jr-tags`}>
                   {selectedT.employmentType && <span className={s.tag}>{selectedT.employmentType}</span>}
                   {selectedT.seniority && <span className={s.tag}>{selectedT.seniority}</span>}
                   {(selectedT.salaryMin || selectedT.salaryMax) && (
@@ -623,11 +1203,14 @@ export default function JobListings() {
               </div>
 
               <div className={s.headerActions}>
-                {views != null && <span className={s.viewsChip}>👁 {views.toLocaleString()}</span>}
+                {views != null && (
+                  <span className={`${s.viewsChip} jr-views`}>👁 {views.toLocaleString()}</span>
+                )}
                 <button
                   type="button"
-                  className={`${s.btn} ${appliedIds.has(selectedT.id) ? s.btnDanger : s.btnPrimary}`}
-                  onClick={() => toggleApply(selectedT)}
+                  className={`${s.btn} ${appliedIds.has(selectedT.id) ? s.btnDanger : s.btnPrimary} jr-applyBtn`}
+                  onClick={() => onApplyToggle(selectedT)}
+                  disabled={isMutating}
                   title={appliedIds.has(selectedT.id) ? S.withdraw_title : S.apply_title}
                 >
                   {appliedIds.has(selectedT.id) ? S.withdraw : S.apply}
@@ -635,24 +1218,26 @@ export default function JobListings() {
               </div>
             </header>
 
-            {/* Description trimmed to the first newline */}
             {briefDesc && (
               <section className={s.section}>
                 <h3 className={s.secHead}>{S.description}</h3>
-                <p className={s.desc}>{briefDesc}</p>
+                <p className={`${s.desc} jr-desc`}>{briefDesc}</p>
               </section>
             )}
 
-            {selected?.raw?.raw?.skills_desc && (
-              <section className={s.section}>
+            {(selected?.raw?.raw?.skills_desc ||
+              selected?.raw?.raw?.requirements ||
+              selected?.raw?.raw?.qualifications) && (
+              <section className={`${s.section} jr-skills`}>
                 <h3 className={s.secHead}>{S.skills}</h3>
-                <p className={s.desc}>{t(selected.raw.raw.skills_desc)}</p>
+                {selected.raw.raw.skills_desc && <p className={s.desc}>{t(selected.raw.raw.skills_desc)}</p>}
+                {selected.raw.raw.requirements && <p className={s.desc}>{t(selected.raw.raw.requirements)}</p>}
+                {selected.raw.raw.qualifications && <p className={s.desc}>{t(selected.raw.raw.qualifications)}</p>}
               </section>
             )}
 
-            {/* Optional extra: compensation from nested raw */}
             {hasRange && (
-              <section className={s.section}>
+              <section className={`${s.section} jr-comp`}>
                 <h3 className={s.secHead}>{S.compensation}</h3>
                 <p className={s.desc}>
                   {formattedMin ?? "—"}
@@ -665,7 +1250,12 @@ export default function JobListings() {
             {selectedT.url && (
               <section className={s.section}>
                 <h3 className={s.secHead}>{S.application}</h3>
-                <a className={s.link} href={selectedT.url} target="_blank" rel="noopener noreferrer">
+                <a
+                  className={`${s.link} jr-applyLink`}
+                  href={selectedT.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
                   {S.view_posting}
                 </a>
               </section>
