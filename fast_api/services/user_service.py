@@ -1,3 +1,4 @@
+# services/user_service.py
 from fastapi import HTTPException
 from .auth_service import get_password_hash, verify_password
 from models.user import User, UserLogin, UserUpdate
@@ -35,6 +36,7 @@ async def update_user(db, email: str, user_update: UserUpdate):
     
     if update_dict:
         update_data.update(update_dict)
+        print("Update data:", update_data)
         
         # If any profile data is being updated, regenerate embedding
         profile_fields = ["name", "location", "summary", "skills", "role", "education", "experience"]
@@ -53,6 +55,8 @@ async def update_user(db, email: str, user_update: UserUpdate):
                     self.role = data.get("role", "")
                     self.education = data.get("education", [])
                     self.experience = data.get("experience", [])
+                    self.disability = data.get("disability", "")
+                    self.gender = data.get("gender", "")
             
             temp_user = TempUser(temp_user_data)
             new_embedding = get_embedding(user_to_text(temp_user))

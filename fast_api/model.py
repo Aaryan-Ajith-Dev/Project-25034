@@ -37,13 +37,11 @@ def job_to_text(job) -> str:
 def user_to_text(user) -> str:
     parts = [
         ("Name: " + user.name),
-        ("Email: " + user.email),
-        ("Phone: " + user.phone),
         ("Location: " + user.location),
         ("Summary: " + user.summary),
         ("Skills: " + user.skills),
-        ("Education: " + ", ".join([f"{edu.degree} from {edu.school}" for edu in user.education]) if user.education else "None"),
-        ("Experience: " + ", ".join([f"{exp.position} at {exp.company}" for exp in user.experience]) if user.experience else "None"),
+        ("Education: " + ", ".join([f"{edu['degree']} from {edu['school']}" for edu in user.education]) if user.education else "None"),
+        ("Experience: " + ", ".join([f"{exp['position']} at {exp['company']}" for exp in user.experience]) if user.experience else "None"),
         ("Disability: " + user.disability if user.disability else "None"),
         ("Gender: " + user.gender if user.gender else "None"),
     ]
