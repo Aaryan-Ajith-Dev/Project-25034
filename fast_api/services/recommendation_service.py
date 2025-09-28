@@ -48,14 +48,14 @@ async def del_prior_for_all_users(db, job_id):
 
 async def get_recommendations_for_user(db, user) -> List[Job]:
     """
-    Sort and return all jobs in decreasing order of prior probability for the user.
+    Return the top 5 jobs sorted by prior probability for the user.
     """
     if "prior" not in user or not user["prior"]:
         return []
     # Fetch all jobs
     jobs = await db.jobs.find({}).to_list(length=None)
-    # Sort jobs by prior probability for the user
-    sorted_jobs = sorted(jobs, key=lambda job: user["prior"].get(job["id"], 0), reverse=True)
-    return [Job(**job) for job in sorted_jobs]
+    # Get top 5 jobs by prior probability for the user
+    top_jobs = sorted(jobs, key=lambda job: user["prior"].get(job["id"], 0), reverse=True)[:5]
+    return [Job(**job) for job in top_jobs]
 
 
