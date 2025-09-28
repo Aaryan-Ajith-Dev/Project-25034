@@ -10,4 +10,5 @@ passlib[bcrypt]==1.7.4
 python-jose[cryptography]==3.3.0
 numpy==1.26.2
 sentence-transformers==2.2.2
+huggingface_hub==0.13.4
 pydantic[email]==1.10.12
