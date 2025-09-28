@@ -45,19 +45,7 @@ async def update_user(db, email: str, user_update: UserUpdate):
             temp_user_data = existing_user.copy()
             temp_user_data.update(update_data)
             
-            # Convert to User-like object for embedding
-            class TempUser:
-                def __init__(self, data):
-                    self.name = data.get("name", "")
-                    self.location = data.get("location", "")
-                    self.summary = data.get("summary", "")
-                    self.skills = data.get("skills", "")
-                    self.role = data.get("role", "")
-                    self.education = data.get("education", [])
-                    self.experience = data.get("experience", [])
-            
-            temp_user = TempUser(temp_user_data)
-            new_embedding = get_embedding(user_to_text(temp_user))
+            new_embedding = get_embedding(user_to_text(temp_user_data))
             update_data["embedding"] = new_embedding.tolist()
             update_data["prior"] = get_prior(db, update_data["embedding"]) or {}
     
