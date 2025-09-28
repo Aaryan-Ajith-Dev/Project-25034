@@ -4,8 +4,7 @@
 # Ignore Python virtual env or caches in server folder
 /server/venv/
 server/__pycache__/
-/fast_api/__pycache__/
-/fast_api/datasetaker-7d91888a83f6.json
+/server/datasetaker-ef809b99e512.json
 
 # Ignore environment files anywhere
 .env

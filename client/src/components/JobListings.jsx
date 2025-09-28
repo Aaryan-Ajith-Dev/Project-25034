@@ -794,6 +794,41 @@ export default function JobListings() {
     }
   }
 
+  async function  sendRecs(job) {
+    if (!job?.id) return;
+    setIsMutating(true);
+    setLoadErr("");
+    const bodyWithSnapshot = { job_id: job.id, job: snapshotFrom(job) };
+    const bodyJustId = { job_id: job.id };
+    try {
+      let res = await fetch(`${RECS_API}`, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          ...authHeaders(),
+        },
+        body: JSON.stringify(bodyWithSnapshot),
+      });
+      if (res.status === 422) {
+        res = await fetch(`${RECS_API}`, {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+            ...authHeaders(),
+          },
+          body: JSON.stringify(bodyJustId),
+        });
+      }
+      if (!res.ok) throw new Error(`Apply failed ${res.status}`);
+    } catch {
+      setLoadErr("Failed to send recommendation to server.");
+    } finally {
+      setIsMutating(false);
+    }
+  }
+
   // Withdraw via DELETE /history/{job_id}
   async function withdrawJob(job) {
     if (!job?.id) return;
@@ -824,8 +859,11 @@ export default function JobListings() {
   function onApplyToggle(job) {
     if (!job) return;
     const isApplied = appliedIds.has(job.id);
+    sendRecs(job)
     if (isApplied) withdrawJob(job);
-    else applyJob(job);
+    else {
+      applyJob(job);
+    }
   }
 
   function buildPageWindow(total, current, delta = 2) {
