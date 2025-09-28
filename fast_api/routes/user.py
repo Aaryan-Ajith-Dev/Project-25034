@@ -51,7 +51,6 @@ async def get_me(current_email: str = Depends(get_current_user_email)):
         {"email": current_email},
         {"_id": 0, "password": 0, "embedding": 0}
     )
-    print(doc["prior"])
     if not doc:
         raise HTTPException(status_code=404, detail="User not found")
     # If skills is a list, convert to comma-separated string if your UserOut expects str

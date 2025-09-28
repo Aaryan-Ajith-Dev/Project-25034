@@ -55,7 +55,8 @@ async def get_recommendations_for_user(db, user) -> List[Job]:
     # Fetch all jobs
     jobs = await db.jobs.find({}).to_list(length=None)
     # Get top 5 jobs by prior probability for the user
-    top_jobs = sorted(jobs, key=lambda job: user["prior"].get(job["id"], 0), reverse=True)[:5]
+    top_jobs = sorted(jobs, key=lambda job: user["prior"].get(job["id"], 0), reverse=True)
+    # Filter based on not being in history
+    history = user.get("history", [])
+    top_jobs = [job for job in top_jobs if job["id"] not in history][:5]
     return [Job(**job) for job in top_jobs]
-
-
