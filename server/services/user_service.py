@@ -49,7 +49,8 @@ async def update_user(db, email: str, user_update: UserUpdate):
             
             new_embedding = get_embedding(user_to_text(temp_user_data))
             update_data["embedding"] = new_embedding.tolist()
-            update_data["prior"] = get_prior(db, update_data["embedding"]) or {}
+            # get_prior is async; await it before storing into DB
+            update_data["prior"] = await get_prior(db, update_data["embedding"]) or {}
     
     if not update_data:
         raise HTTPException(status_code=400, detail="No fields to update")

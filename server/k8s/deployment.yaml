@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: recsys-backend
+  namespace: recsys
+  labels:
+    app: recsys-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: recsys-backend
+  template:
+    metadata:
+      labels:
+        app: recsys-backend
+    spec:
+      containers:
+        - name: recsys-backend
+          image: a3ryn/recsys:latest  # replace with your image
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+
+          # Optional env vars (ideal practice)
+          envFrom:
+            - secretRef:
+                name: recsys-secret
+            - configMapRef:
+                name: recsys-config
+
+          # # Optional resources
+          # resources:
+          #   requests:
+          #     cpu: "200m"
+          #     memory: "256Mi"
+          #   limits:
+          #     cpu: "500m"
+          #     memory: "512Mi"

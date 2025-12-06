@@ -1,0 +1,53 @@
+---
+- name: Deploy FastAPI Docker app
+  hosts: web
+  become: true
+
+  vars:
+    image_name: fastapi-app
+    container_name: fastapi
+
+  tasks:
+
+    - name: Ensure Docker is installed
+      apt:
+        name: docker.io
+        state: present
+      tags: install
+
+    - name: Ensure Docker service is running
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Copy application files
+      synchronize:
+        src: "../"
+        dest: "/opt/app"
+        recursive: yes
+        delete: no
+
+    - name: Build Docker image
+      community.docker.docker_image:
+        name: "{{ image_name }}"
+        tag: latest
+        build:
+          path: /opt/app
+          pull: yes
+        source: build
+
+    - name: Stop old container if exists
+      community.docker.docker_container:
+        name: "{{ container_name }}"
+        state: absent
+      ignore_errors: yes
+
+    - name: Run container
+      community.docker.docker_container:
+        name: "{{ container_name }}"
+        image: "{{ image_name }}:latest"
+        state: started
+        restart_policy: always
+        published_ports:
+          - "80:80"

@@ -21,11 +21,7 @@ async def global_auth_middleware(request: Request, call_next):
     public_prefixes = (
         "/auth/login",
         "/auth/signup",
-        "/docs",
-        "/openapi.json",
-        "/redoc",
         "/api/translate",  # if translation should be public
-        "/healthz",
         "/",
         "/jobs/embed",  # Allow embed jobs endpoint
     )

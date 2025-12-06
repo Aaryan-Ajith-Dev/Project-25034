@@ -1,0 +1,26 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: recsys-ingress
+  namespace: recsys
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: api.192.168.49.2.nip.io  # REPLACE with your domain or nip.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: recsys-service
+                port:
+                  number: 80
+
+  # tls:
+  #   - hosts:
+  #     - api.192.168.49.2.nip.io      # replace
+  #     secretName: recsys-tls # cert secret
