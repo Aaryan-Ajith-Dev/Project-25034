@@ -1,5 +1,5 @@
 from fastapi import Request, Response
-from services.auth_service import decode_access_token
+from server.services.auth_service import decode_access_token
 
 async def auth_filter(request: Request):
     # Allow all /auth/* routes, /api/translate, and /jobs/embed

@@ -1,12 +1,21 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from routes import auth, jobs, user, translate
-from config.auth_filter import auth_filter
+from server.routes import auth, jobs, user, translate
+from server.config.auth_filter import auth_filter
+from server.db import create_db_client
 import dotenv
+from contextlib import asynccontextmanager
+
 
 dotenv.load_dotenv()
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    app.state.db = create_db_client()
+    yield
+    app.state.db.client.close()
+
+app = FastAPI(lifespan=lifespan)
 
 # 1) Global auth middleware: bypass OPTIONS and public paths
 @app.middleware("http")

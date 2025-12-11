@@ -1,14 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
-from models.user import User, UserLogin
+from server.models.user import User, UserLogin
 from server.services.logging_service import log_event
-from services.auth_service import create_access_token
-from services.user_service import create_user, authenticate_user
-from db import db
+from server.services.auth_service import create_access_token
+from server.services.user_service import create_user, authenticate_user
 
 router = APIRouter()
 
 @router.post("/signup")
-async def signup(user: User):
+async def signup(request: Request, user: User):
+    db = request.app.state.db
     await create_user(db, user)
     token = create_access_token({"sub": user.email})
 
@@ -22,7 +22,8 @@ async def signup(user: User):
     return {"token": token, "msg": "signed in successfully", "status": 200}
 
 @router.post("/login")
-async def login(user: UserLogin):
+async def login(request: Request, user: UserLogin):
+    db = request.app.state.db
     await authenticate_user(db, user)
     token = create_access_token({"sub": user.email})
     

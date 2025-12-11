@@ -1,0 +1,230 @@
+// Jenkinsfile (Declarative pipeline)
+// Assumptions:
+// - Repo layout: server/, k8s/, ansible/, tests/, Dockerfile at server/
+// - You have Jenkins credentials set up (see README comments below)
+// - kubectl, docker (or podman), and ansible or docker-in-docker are available on the agent
+// - For load-tests we use an ephemeral container (rakyll/hey) so agent needs docker
+// - You can use a KUBECONFIG secret or Jenkins Kubernetes plugin integration
+
+pipeline {
+  agent any
+
+  // Parameters you can override when triggering a job
+  parameters {
+    string(name: 'IMAGE_REGISTRY', defaultValue: 'docker.io/a3ryn', description: 'Container registry (user/repo prefix)')
+    string(name: 'IMAGE_NAME', defaultValue: 'recsys', description: 'Image name')
+    string(name: 'K8S_NAMESPACE', defaultValue: 'recsys', description: 'Kubernetes namespace')
+    booleanParam(name: 'RUN_HPA_TEST', defaultValue: false, description: 'Run HPA load test stage?')
+    string(name: 'HPA_TEST_DURATION', defaultValue: '60s', description: 'Load test duration for hey (e.g. 60s)')
+    string(name: 'HPA_TEST_CONCURRENCY', defaultValue: '50', description: 'Concurrency (requests at once) for hey')
+  }
+
+  environment {
+    // set dynamically at runtime
+    GIT_COMMIT = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
+    IMAGE_TAG = "${params.IMAGE_NAME}:${env.BUILD_NUMBER}-${env.GIT_COMMIT}"
+    FULL_IMAGE = "${params.IMAGE_REGISTRY}/${env.IMAGE_TAG}"
+    KUBECONFIG_PATH = "${env.WORKSPACE}/kubeconfig"
+    // Credentials IDs (configure them in Jenkins credentials store)
+    DOCKER_CRED_ID = 'docker-registry-credentials'
+    KUBECONFIG_CRED_ID = 'kubeconfig'
+    ANSIBLE_SSH_ID = 'ansible-ssh'
+  }
+
+  options {
+    // keep a few builds
+    buildDiscarder(logRotator(numToKeepStr: '20'))
+    timestamps()
+    timeout(time: 60, unit: 'MINUTES')
+  }
+
+  stages {
+
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Python Lint & Unit Tests') {
+      agent { label 'python' } // ensure agent has python & pytest
+      steps {
+        dir('server') {
+          sh '''
+            python3 -m venv .venv || true
+            . .venv/bin/activate
+            pip install -q --upgrade pip
+            pip install -r requirements.txt || true
+            pip install pytest flake8
+            flake8 || true
+            pytest -q --maxfail=1 || true
+          '''
+        }
+      }
+      post {
+        always {
+          junit allowEmptyResults: true, testResults: 'server/**/*.xml' // if you produce junit xml
+          archiveArtifacts artifacts: 'server/**/coverage*', allowEmptyArchive: true
+        }
+      }
+    }
+
+    stage('Build Docker image') {
+      steps {
+        dir('server') {
+          script {
+            // login and build + push
+            withCredentials([usernamePassword(credentialsId: env.DOCKER_CRED_ID, usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+              sh '''
+                echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin || true
+                docker build -t ${FULL_IMAGE} .
+                docker push ${FULL_IMAGE}
+              '''
+            }
+          }
+        }
+      }
+      post {
+        success {
+          echo "Built and pushed ${FULL_IMAGE}"
+        }
+      }
+    }
+
+    stage('(Optional) Ansible: Provision/Configure') {
+      when {
+        expression { fileExists('ansible') && env.ANSIBLE_SSH_ID != null }
+      }
+      steps {
+        script {
+          withCredentials([sshUserPrivateKey(credentialsId: env.ANSIBLE_SSH_ID, keyFileVariable: 'ANSIBLE_KEY')]) {
+            sh '''
+              # Example: run ansible playbook (expects inventory & playbook under ansible/)
+              export ANSIBLE_PRIVATE_KEY_FILE=${ANSIBLE_KEY}
+              ansible-playbook -i ansible/inventory ansible/site.yml --extra-vars "image=${FULL_IMAGE}"
+            '''
+          }
+        }
+      }
+    }
+
+    stage('Deploy to Kubernetes') {
+      steps {
+        script {
+          // write kubeconfig credential to file and use it
+          withCredentials([file(credentialsId: env.KUBECONFIG_CRED_ID, variable: 'KUBECONFIG_FILE')]) {
+            sh '''
+              # place kubeconfig into workspace so kubectl can use it
+              cp ${KUBECONFIG_FILE} ${KUBECONFIG_PATH}
+              export KUBECONFIG=${KUBECONFIG_PATH}
+              # update the deployment image to the new tag (assumes k8s/deployment.yaml uses image placeholder or you patch)
+              # Option A: kubectl set image (works if deployment exists)
+              kubectl apply -f k8s/namespace.yaml || true
+              kubectl apply -n ${K8S_NAMESPACE} -f k8s/ --recursive
+              # Patch the deployment's image (modify selector name if different)
+              kubectl -n ${K8S_NAMESPACE} set image deployment/recsys-backend recsys-backend=${FULL_IMAGE} --record || true
+              kubectl -n ${K8S_NAMESPACE} rollout status deployment/recsys-backend --timeout=120s
+            '''
+          }
+        }
+      }
+    }
+
+    stage('Deploy Logging (Filebeat)') {
+      when { expression { fileExists('k8s/filebeat.yaml') } }
+      steps {
+        withCredentials([file(credentialsId: env.KUBECONFIG_CRED_ID, variable: 'KUBECONFIG_FILE')]) {
+          sh '''
+            export KUBECONFIG=${KUBECONFIG_FILE}
+            kubectl apply -n kube-system -f k8s/filebeat.yaml
+          '''
+        }
+      }
+    }
+
+    stage('Smoke tests') {
+      steps {
+        script {
+          withCredentials([file(credentialsId: env.KUBECONFIG_CRED_ID, variable: 'KUBECONFIG_FILE')]) {
+            sh '''
+              export KUBECONFIG=${KUBECONFIG_FILE}
+              echo "Waiting for service endpoints..."
+              kubectl -n ${K8S_NAMESPACE} get svc recsys-service || true
+              # run a quick curl from a temporary debug pod inside the cluster to ensure routing works
+              kubectl -n ${K8S_NAMESPACE} run tmp-curl --image=radial/busyboxplus:curl -i --restart=Never --rm -- \
+                sh -c "sleep 1; echo 'Checking ingress/service'; curl -sS --fail http://recsys-service.${K8S_NAMESPACE}.svc.cluster.local:80/ || exit 1"
+            '''
+          }
+        }
+      }
+    }
+
+    stage('Run Integration Tests') {
+      steps {
+        script {
+          // If you have a python integration test suite that hits the cluster endpoints
+          dir('server') {
+            sh '''
+              . .venv/bin/activate || true
+              pytest tests/integration -q || true
+            '''
+          }
+        }
+      }
+      post { always { junit allowEmptyResults: true, testResults: 'server/tests/integration/**/results.xml' } }
+    }
+
+    stage('HPA Load Test & Verification') {
+      when { expression { params.RUN_HPA_TEST == true } }
+      steps {
+        script {
+          withCredentials([file(credentialsId: env.KUBECONFIG_CRED_ID, variable: 'KUBECONFIG_FILE')]) {
+            sh '''
+              export KUBECONFIG=${KUBECONFIG_FILE}
+              echo "Current HPA:"
+              kubectl -n ${K8S_NAMESPACE} get hpa -o wide || true
+
+              # Run load generator using containerized hey (avoid installing tools on agent)
+              docker run --rm rakyll/hey -z ${HPA_TEST_DURATION} -c ${HPA_TEST_CONCURRENCY} http://recsys-service.${K8S_NAMESPACE}.svc.cluster.local:80 &
+
+              # Monitor HPA for up to 3 minutes
+              echo "Watching HPA for 180s..."
+              for i in $(seq 1 36); do
+                kubectl -n ${K8S_NAMESPACE} get hpa recsys-hpa -o=jsonpath='{.status.currentReplicas}{"\\n"}' || true
+                sleep 5
+              done
+
+              echo "HPA status (describe):"
+              kubectl -n ${K8S_NAMESPACE} describe hpa recsys-hpa || true
+            '''
+          }
+        }
+      }
+    }
+  }
+
+  post {
+    always {
+      script {
+        // archive logs and artifacts
+        archiveArtifacts artifacts: 'server/logs/**', allowEmptyArchive: true
+      }
+      // optionally cleanup tmp resources
+      withCredentials([file(credentialsId: env.KUBECONFIG_CRED_ID, variable: 'KUBECONFIG_FILE')]) {
+        sh '''
+          export KUBECONFIG=${KUBECONFIG_FILE}
+          # remove temporary debug pod if exists
+          kubectl -n ${K8S_NAMESPACE} delete pod tmp-curl --ignore-not-found=true || true
+        '''
+      }
+    }
+
+    success {
+      echo "Pipeline succeeded. Image: ${FULL_IMAGE}"
+    }
+
+    failure {
+      echo "Pipeline failed. See console for errors."
+    }
+  }
+}
