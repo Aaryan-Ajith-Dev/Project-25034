@@ -12,7 +12,7 @@ pymongo==4.9.1
 python-dotenv==1.0.1
 
 # Add small CPU torch first (PREVENTS full GPU torch from installing)
-torch==2.3.1+cpu
+torch==2.9.1+cpu
 huggingface-hub==0.16.4
 sentence-transformers==2.6.1
 

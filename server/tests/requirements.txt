@@ -1,0 +1,12 @@
+# Test Dependencies for Recommendation System Testing
+
+# API Testing
+requests==2.31.0
+urllib3==2.1.0
+
+# Selenium UI Testing
+selenium==4.15.2
+webdriver-manager==4.0.1
+
+# Utilities
+python-dotenv==1.0.0

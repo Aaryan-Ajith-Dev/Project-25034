@@ -1,0 +1,307 @@
+pipeline {
+    agent any
+    
+    environment {
+        // Docker Hub credentials (configure in Jenkins: Manage Jenkins -> Credentials)
+        DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
+        DOCKER_IMAGE = 'shreyas0s/recsys'
+        IMAGE_TAG = "${BUILD_NUMBER}"
+        
+        // Kubernetes namespace
+        K8S_NAMESPACE = 'recsys'
+        
+        // GitHub repository
+        GIT_REPO = 'https://github.com/Aaryan-Ajith-Dev/Project-25034.git'
+        GIT_BRANCH = 'main'
+        
+        // Paths
+        SERVER_DIR = 'server'
+        K8S_DIR = 'server/k8s'
+        TESTS_DIR = 'server/tests'
+    }
+    
+    stages {
+        stage('Cleanup Workspace') {
+            steps {
+                echo 'Cleaning workspace...'
+                cleanWs()
+            }
+        }
+        
+        stage('Checkout Code') {
+            steps {
+                echo 'Pulling latest changes from GitHub...'
+                git branch: "${GIT_BRANCH}",
+                    url: "${GIT_REPO}"
+                    
+                sh '''
+                    echo "Current directory: $(pwd)"
+                    echo "Repository contents:"
+                    ls -la
+                '''
+            }
+        }
+        
+        stage('Build Docker Image') {
+            steps {
+                echo '🐳 Building Docker image...'
+                dir("${SERVER_DIR}") {
+                    script {
+                        // Build image with both BUILD_NUMBER tag and 'latest' tag
+                        sh """
+                            docker build -t ${DOCKER_IMAGE}:${IMAGE_TAG} .
+                            docker tag ${DOCKER_IMAGE}:${IMAGE_TAG} ${DOCKER_IMAGE}:latest
+                            
+                            echo "Docker image built successfully:"
+                            docker images | grep ${DOCKER_IMAGE}
+                        """
+                    }
+                }
+            }
+        }
+        
+        stage('Login to Docker Hub') {
+            steps {
+                echo 'Logging into Docker Hub...'
+                sh '''
+                    echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKERHUB_CREDENTIALS_USR --password-stdin
+                '''
+            }
+        }
+        
+        stage('Push Docker Image') {
+            steps {
+                echo 'Pushing Docker image to Docker Hub...'
+                sh """
+                    docker push ${DOCKER_IMAGE}:${IMAGE_TAG}
+                    docker push ${DOCKER_IMAGE}:latest
+                    
+                    echo "Images pushed successfully:"
+                    echo "  - ${DOCKER_IMAGE}:${IMAGE_TAG}"
+                    echo "  - ${DOCKER_IMAGE}:latest"
+                """
+            }
+        }
+        
+        stage('Setup Kubernetes') {
+            steps {
+                echo 'Setting up Kubernetes namespace and secrets...'
+                script {
+                    sh """
+                        # Create namespace if it doesn't exist
+                        kubectl get namespace ${K8S_NAMESPACE} || kubectl create namespace ${K8S_NAMESPACE}
+                        
+                        # Verify namespace
+                        kubectl get namespace ${K8S_NAMESPACE}
+                    """
+                }
+            }
+        }
+        
+        stage('Deploy ELK Stack') {
+            steps {
+                echo 'Deploying ELK Stack (Elasticsearch, Logstash, Kibana, Filebeat)...'
+                dir("${K8S_DIR}") {
+                    sh """
+                        # Deploy Elasticsearch
+                        echo "Deploying Elasticsearch..."
+                        kubectl apply -f elasticsearch.yaml -n ${K8S_NAMESPACE}
+                        
+                        # Wait for Elasticsearch to be ready
+                        echo "Waiting for Elasticsearch to be ready..."
+                        kubectl wait --for=condition=ready pod -l app=elasticsearch -n ${K8S_NAMESPACE} --timeout=300s || true
+                        sleep 30
+                        
+                        # Deploy Logstash
+                        echo "Deploying Logstash..."
+                        kubectl apply -f logstash-configmap.yaml -n ${K8S_NAMESPACE}
+                        kubectl apply -f logstash.yaml -n ${K8S_NAMESPACE}
+                        
+                        # Wait for Logstash
+                        echo "Waiting for Logstash to be ready..."
+                        kubectl wait --for=condition=ready pod -l app=logstash -n ${K8S_NAMESPACE} --timeout=180s || true
+                        sleep 15
+                        
+                        # Deploy Kibana
+                        echo "Deploying Kibana..."
+                        kubectl apply -f kibana.yaml -n ${K8S_NAMESPACE}
+                        
+                        # Deploy Filebeat ConfigMap
+                        echo "Deploying Filebeat ConfigMap..."
+                        kubectl apply -f filebeat-configmap.yaml -n ${K8S_NAMESPACE}
+                        
+                        echo "ELK Stack deployment initiated"
+                        kubectl get pods -n ${K8S_NAMESPACE}
+                    """
+                }
+            }
+        }
+        
+        stage('Deploy Backend Application') {
+            steps {
+                echo 'Deploying Backend Application with Filebeat sidecar...'
+                dir("${K8S_DIR}") {
+                    sh """
+                        # Apply ConfigMaps and Secrets (if they exist)
+                        if [ -f configmap.yaml ]; then
+                            kubectl apply -f configmap.yaml -n ${K8S_NAMESPACE}
+                        fi
+                        
+                        if [ -f secrets.yaml ]; then
+                            kubectl apply -f secrets.yaml -n ${K8S_NAMESPACE}
+                        fi
+                        
+                        # Update deployment image to use new build
+                        kubectl set image deployment/recsys-backend recsys-backend=${DOCKER_IMAGE}:${IMAGE_TAG} -n ${K8S_NAMESPACE} || \
+                            kubectl apply -f deployment.yaml -n ${K8S_NAMESPACE}
+                        
+                        # Apply service
+                        kubectl apply -f service.yaml -n ${K8S_NAMESPACE}
+                        
+                        # Apply HPA
+                        kubectl apply -f hpa.yaml -n ${K8S_NAMESPACE}
+                        
+                        # Apply Ingress
+                        kubectl apply -f ingress.yaml -n ${K8S_NAMESPACE}
+                        
+                        echo "Waiting for deployment to be ready..."
+                        kubectl rollout status deployment/recsys-backend -n ${K8S_NAMESPACE} --timeout=300s
+                        
+                        echo "Backend deployment completed"
+                        kubectl get all -n ${K8S_NAMESPACE}
+                    """
+                }
+            }
+        }
+        
+        stage('Verify Deployment') {
+            steps {
+                echo 'Verifying all pods are running...'
+                sh """
+                    echo "All resources in namespace ${K8S_NAMESPACE}:"
+                    kubectl get all -n ${K8S_NAMESPACE}
+                    
+                    echo ""
+                    echo "Pod status:"
+                    kubectl get pods -n ${K8S_NAMESPACE} -o wide
+                    
+                    echo ""
+                    echo "Checking pod readiness..."
+                    kubectl wait --for=condition=ready pod -l app=recsys-backend -n ${K8S_NAMESPACE} --timeout=180s
+                    
+                    echo "All pods are ready"
+                """
+            }
+        }
+        
+        stage('Wait for Services') {
+            steps {
+                echo '⏳ Waiting for services to stabilize...'
+                sh """
+                    echo "Waiting 60 seconds for all services to stabilize..."
+                    sleep 60
+                    
+                    echo "Final pod status:"
+                    kubectl get pods -n ${K8S_NAMESPACE}
+                    
+                    echo ""
+                    echo "Service endpoints:"
+                    kubectl get endpoints -n ${K8S_NAMESPACE}
+                """
+            }
+        }
+        
+        stage('Run Tests') {
+            steps {
+                echo 'Running comprehensive test suite...'
+                dir("${TESTS_DIR}") {
+                    sh """
+                        # Install test dependencies
+                        echo "Installing test dependencies..."
+                        pip3 install --user -r requirements.txt || true
+                        
+                        # Run API and ELK tests
+                        echo ""
+                        echo "===================="
+                        echo "Running API + ELK Tests"
+                        echo "===================="
+                        python3 test_recsys_elk.py
+                        
+                        echo ""
+                        echo "All tests completed successfully!"
+                    """
+                }
+            }
+        }
+        
+        stage('Generate Test Report') {
+            steps {
+                echo 'Generating test report...'
+                dir("${TESTS_DIR}") {
+                    sh """
+                        echo "Test execution completed at: \$(date)"
+                        echo "Build Number: ${BUILD_NUMBER}"
+                        echo "Docker Image: ${DOCKER_IMAGE}:${IMAGE_TAG}"
+                        echo "Kubernetes Namespace: ${K8S_NAMESPACE}"
+                        echo ""
+                        echo "Access Information:"
+                        echo "  - Kibana: http://\$(minikube ip):30561"
+                        echo "  - API: http://api.\$(minikube ip).nip.io"
+                        echo ""
+                        echo "To view logs:"
+                        echo "  kubectl logs -n ${K8S_NAMESPACE} deployment/recsys-backend -c recsys-backend -f"
+                        echo ""
+                        echo "To check Elasticsearch:"
+                        echo "  kubectl port-forward -n ${K8S_NAMESPACE} svc/elasticsearch 9200:9200"
+                    """
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo 'Cleaning up Docker images...'
+            sh """
+                # Remove local images to save space
+                docker rmi ${DOCKER_IMAGE}:${IMAGE_TAG} || true
+                docker rmi ${DOCKER_IMAGE}:latest || true
+                
+                # Logout from Docker Hub
+                docker logout || true
+            """
+        }
+        
+        success {
+            echo 'Pipeline completed successfully!'
+            sh """
+                echo "=================================================="
+                echo "DEPLOYMENT SUCCESSFUL"
+                echo "=================================================="
+                echo "Build: ${BUILD_NUMBER}"
+                echo "Image: ${DOCKER_IMAGE}:${IMAGE_TAG}"
+                echo "Namespace: ${K8S_NAMESPACE}"
+                echo ""
+                echo "All services are running and tests passed!"
+                echo "=================================================="
+            """
+        }
+        
+        failure {
+            echo 'Pipeline failed!'
+            sh """
+                echo "=================================================="
+                echo "DEPLOYMENT FAILED"
+                echo "=================================================="
+                echo "Build: ${BUILD_NUMBER}"
+                echo ""
+                echo "Checking pod status for debugging:"
+                kubectl get pods -n ${K8S_NAMESPACE} || true
+                echo ""
+                echo "Recent pod logs:"
+                kubectl logs -n ${K8S_NAMESPACE} -l app=recsys-backend --tail=50 || true
+                echo "=================================================="
+            """
+        }
+    }
+}

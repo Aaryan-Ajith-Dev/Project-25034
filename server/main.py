@@ -3,8 +3,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from routes import auth, jobs, user, translate
 from config.auth_filter import auth_filter
 import dotenv
+import logging
+from logging.handlers import RotatingFileHandler
 
 dotenv.load_dotenv()
+
+# Configure logging
+log_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+log_file = '/app/logs/backend.log'
+my_handler = RotatingFileHandler(log_file, mode='a', maxBytes=5*1024*1024, 
+                                 backupCount=2, encoding=None, delay=0)
+my_handler.setFormatter(log_formatter)
+my_handler.setLevel(logging.INFO)
+
+app_log = logging.getLogger('root')
+app_log.setLevel(logging.INFO)
+app_log.addHandler(my_handler)
 
 app = FastAPI()
 

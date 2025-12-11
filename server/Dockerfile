@@ -37,9 +37,12 @@ COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/pytho
 # The dot '.' refers to the current build context (your project root)
 COPY . .
 
+# Ensure our app package path is resolvable inside the container
+ENV PYTHONPATH=/usr/src/app
+
 # Expose the port that FastAPI will run on (default is 80)
-EXPOSE 80
+EXPOSE 8000
 
 # The command to run your FastAPI application using Uvicorn
 # Replace 'main:app' with the correct entry point (e.g., 'your_main_file:your_FastAPI_object')
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "80"]
+CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

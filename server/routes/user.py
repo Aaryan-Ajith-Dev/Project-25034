@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel, EmailStr
 from typing import List, Dict, Any
 from model import get_prior, update_prior
-from server.services.logging_service import log_event
+from services.logging_service import log_event
 from services.recommendation_service import get_recommendations_for_user
 from models.user import UserOut, UserUpdate
 from models.job import Job

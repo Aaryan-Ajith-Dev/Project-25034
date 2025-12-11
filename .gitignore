@@ -1,25 +1,188 @@
-# Ignore node modules in client folder
+# ============================================================================
+# Node.js / Client
+# ============================================================================
 /client/node_modules/
-
-# Ignore Python virtual env or caches in server folder
-/server/venv/
-server/__pycache__/
-/server/datasetaker-ef809b99e512.json
-
-# Ignore environment files anywhere
-.env
-**/.env                 # Any .env files in subfolders
-
-# Ignore other common system files (optional)
-.DS_Store
-Thumbs.db
-
-.vscode/
-__pycache__/
 client/src/data/*
 client/mongodb-compass_1.46.11_amd64.deb
 client/postings.ndjson
 
-# Add all pycaches
+# ============================================================================
+# Python / Server
+# ============================================================================
+# Virtual environments
+/server/venv/
+/server/.venv/
+/server/env/
+/server/.env/
+**/venv/
+**/.venv/
+
+# Python cache files
+server/__pycache__/
 **/__pycache__/
 **/*.pyc
+**/*.pyo
+**/*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Python testing
+.pytest_cache/
+.coverage
+.tox/
+htmlcov/
+.hypothesis/
+*.cover
+
+# ============================================================================
+# Logs and Runtime Files (NOT needed in Git)
+# ============================================================================
+# Application logs
+/server/logs/*.log
+/server/logs/**/*.log
+/server/tests/*.log
+/server/tests/**/*.log
+*.log
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# ============================================================================
+# Environment and Secrets
+# ============================================================================
+.env
+**/.env
+.env.local
+.env.*.local
+/server/datasetaker-ef809b99e512.json
+**/*.pem
+**/*.key
+**/*.crt
+
+# ============================================================================
+# IDE and Editor Files
+# ============================================================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+*.sublime-project
+*.sublime-workspace
+
+# ============================================================================
+# Docker
+# ============================================================================
+# Docker Compose override (if using for local dev)
+docker-compose.override.yml
+
+# ============================================================================
+# Kubernetes Local Files (NOT needed in Git)
+# ============================================================================
+# Kubernetes secrets generated locally
+/server/k8s/secrets.yaml
+/server/k8s/*-secret.yaml
+
+# Temporary Kubernetes files
+/server/k8s/*.tmp
+/server/k8s/.kubectl_*
+
+# ============================================================================
+# Jenkins (Local Jenkins files - NOT needed in Git)
+# ============================================================================
+# Jenkins home directory (if running locally)
+.jenkins/
+jenkins_home/
+
+# ============================================================================
+# ELK Stack Local Data (NOT needed in Git)
+# ============================================================================
+# Elasticsearch data
+/server/elk/elasticsearch/data/
+/server/elasticsearch-data/
+
+# Logstash data
+/server/elk/logstash/data/
+
+# Kibana data
+/server/elk/kibana/data/
+
+# ============================================================================
+# Testing and Coverage
+# ============================================================================
+# Test outputs
+/server/tests/test_output.log
+/server/tests/*.log
+/server/tests/.pytest_cache/
+/server/tests/__pycache__/
+
+# Coverage reports
+.coverage
+coverage.xml
+*.cover
+htmlcov/
+
+# ============================================================================
+# Temporary and Cache Files
+# ============================================================================
+*.tmp
+*.temp
+*.cache
+.cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# ============================================================================
+# OS-specific Files
+# ============================================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ============================================================================
+# Backup Files
+# ============================================================================
+*.bak
+*.backup
+*~
+*.orig
+
+# ============================================================================
+# KEEP THESE IN GIT (Documentation and Config)
+# ============================================================================
+# Documentation files - KEEP THESE
+# !README.md
+# !README_PIPELINE.md
+# !DOCUMENTATION_INDEX.md
+# !JENKINS_*.md
+# !PIPELINE_*.md
+
+# Configuration templates - KEEP THESE
+# !.env.example
+# !docker-compose.yml
+# !Dockerfile
+# !Jenkinsfile
+
+# Kubernetes manifests - KEEP THESE
+# !k8s/*.yaml
+# !k8s/deployment.yaml
+# !k8s/service.yaml
+# etc.

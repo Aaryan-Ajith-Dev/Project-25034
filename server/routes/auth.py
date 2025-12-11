@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from models.user import User, UserLogin
-from server.services.logging_service import log_event
+from services.logging_service import log_event
 from services.auth_service import create_access_token
 from services.user_service import create_user, authenticate_user
 from db import db
