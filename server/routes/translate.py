@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
-from services.translate_service import translate_texts
+from server.services.translate_service import translate_texts
 
 router = APIRouter()
 

@@ -1,8 +1,8 @@
 # services/user_service.py
 from fastapi import HTTPException
-from .auth_service import get_password_hash, verify_password
-from models.user import User, UserLogin, UserUpdate
-from model import get_embedding, get_prior, user_to_text
+from server.services.auth_service import get_password_hash, verify_password
+from server.models.user import User, UserLogin, UserUpdate
+from server.model import get_embedding, get_prior, user_to_text
 import numpy as np
 
 async def create_user(db, user: User):

@@ -1,7 +1,7 @@
 from typing import List
-from model import cosine_sim
-from models.job import Job
-from models.user import User
+from server.model import cosine_sim
+from server.models.job import Job
+from server.models.user import User
 import numpy as np
 
 async def set_prior_for_all_users(db, job):

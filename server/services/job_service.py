@@ -1,7 +1,7 @@
 from fastapi import HTTPException
-from services.recommendation_service import del_prior_for_all_users, set_prior_for_all_users
-from models.job import Job
-from model import get_embedding, job_to_text
+from server.services.recommendation_service import del_prior_for_all_users, set_prior_for_all_users
+from server.models.job import Job
+from server.model import get_embedding, job_to_text
 import numpy as np
 from typing import List, Optional
 import re

@@ -2,15 +2,14 @@
 from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel, EmailStr
 from typing import List, Dict, Any
-from model import get_prior, update_prior
-from services.logging_service import log_event
-from services.recommendation_service import get_recommendations_for_user
-from models.user import UserOut, UserUpdate
-from models.job import Job
-from db import db
-from services.auth_service import decode_access_token
-from services.user_service import update_user
-from services.history_service import (
+from server.model import get_prior, update_prior
+from server.services.logging_service import log_event
+from server.services.recommendation_service import get_recommendations_for_user
+from server.models.user import UserOut, UserUpdate
+from server.models.job import Job
+from server.services.auth_service import decode_access_token
+from server.services.user_service import update_user
+from server.services.history_service import (
     add_job_to_history, 
     get_user_history_with_jobs, 
     remove_job_from_history,
@@ -45,9 +44,13 @@ def get_current_user_email(request: Request) -> str:
     return email
 
 @router.get("/me", response_model=UserOut)
-async def get_me(current_email: str = Depends(get_current_user_email)):
+async def get_me(
+    request: Request,
+    current_email: str = Depends(get_current_user_email)
+):
     # Exclude sensitive fields
     print("Fetching profile for:", current_email)
+    db = request.app.state.db
     doc = await db.users.find_one(
         {"email": current_email},
         {"_id": 0, "password": 0, "embedding": 0}
@@ -62,12 +65,13 @@ async def get_me(current_email: str = Depends(get_current_user_email)):
 
 @router.put("/me", response_model=UserOut)
 async def update_me(
+    request: Request,
     user_update: UserUpdate,
     current_email: str = Depends(get_current_user_email)
 ):
     """Update current user's profile information"""
     print("Updating profile for:", current_email)
-    
+    db = request.app.state.db
     updated_user = await update_user(db, current_email, user_update)
     
     # Convert skills to string if it's a list (for consistency with get_me)
@@ -83,12 +87,24 @@ async def update_me(
 
     return UserOut(**updated_user)
 
+@router.delete("/me", response_model=dict)
+async def delete_me(request: Request, current_email: str = Depends(get_current_user_email)):
+    """Delete current user's account"""
+    print("Deleting account for:", current_email)
+    db = request.app.state.db
+    result = await db.users.delete_one({"email": current_email})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    log_event("user_account_deleted", {"email": current_email})
+    return {"message": "User account deleted successfully"}
+
 # History routes
 @router.get("/history", response_model=List[Dict[str, Any]])
-async def get_history(current_email: str = Depends(get_current_user_email)):
+async def get_history(request: Request, current_email: str = Depends(get_current_user_email)):
     """Get user's job application history with full job details"""
     print("Fetching history for:", current_email)
-    
+    db = request.app.state.db
     history_jobs = await get_user_history_with_jobs(db, current_email)
     log_event("user_history_fetched", {
         "email": current_email,
@@ -98,17 +114,18 @@ async def get_history(current_email: str = Depends(get_current_user_email)):
 
 @router.post("/history", response_model=HistoryResponse)
 async def add_to_history(
-    request: AddJobToHistoryRequest,
+    request: Request,
+    request_data: AddJobToHistoryRequest,
     current_email: str = Depends(get_current_user_email)
 ):
     """Add a job to user's application history"""
-    print(f"Adding job {request.job_id} to history for:", current_email)
-    
-    result = await add_job_to_history(db, current_email, request.job_id)
+    print(f"Adding job {request_data.job_id} to history for:", current_email)
+    db = request.app.state.db
+    result = await add_job_to_history(db, current_email, request_data.job_id)
     
     log_event("job_added_to_history", {
         "email": current_email,
-        "job_id": request.job_id,
+        "job_id": request_data.job_id,
         "history_count": result.get("history_count")
     })
 
@@ -116,12 +133,13 @@ async def add_to_history(
 
 @router.delete("/history/{job_id}", response_model=HistoryResponse)
 async def remove_from_history(
+    request: Request,
     job_id: str,
     current_email: str = Depends(get_current_user_email)
 ):
     """Remove a specific job from user's application history"""
     print(f"Removing job {job_id} from history for:", current_email)
-    
+    db = request.app.state.db
     result = await remove_job_from_history(db, current_email, job_id)
     log_event("job_removed_from_history", {
         "email": current_email,
@@ -131,10 +149,10 @@ async def remove_from_history(
     return HistoryResponse(**result)
 
 @router.delete("/history", response_model=HistoryResponse)
-async def clear_history(current_email: str = Depends(get_current_user_email)):
+async def clear_history(request: Request, current_email: str = Depends(get_current_user_email)):
     """Clear all jobs from user's application history"""
     print("Clearing history for:", current_email)
-    
+    db = request.app.state.db
     result = await clear_user_history(db, current_email)
     log_event("history_cleared", {
         "email": current_email,
@@ -144,10 +162,10 @@ async def clear_history(current_email: str = Depends(get_current_user_email)):
 
 # Sorts jobs based on similarity to user's profile embedding
 @router.get("/recommendations", response_model=List[Job])
-async def get_recommendations(current_email: str = Depends(get_current_user_email)):
+async def get_recommendations(request: Request, current_email: str = Depends(get_current_user_email)):
     """Get job recommendations based on user's profile embedding"""
     print("Fetching recommendations for:", current_email)
-    
+    db = request.app.state.db
     # Fetch user to get embedding
     user = await db.users.find_one({"email": current_email})
     if not user or "embedding" not in user:
@@ -163,11 +181,12 @@ async def get_recommendations(current_email: str = Depends(get_current_user_emai
 
 @router.post("/recommendations", response_model=dict)
 async def update_priorities(
-    request: PriorUpdateRequest, current_email: str = Depends(get_current_user_email)
+    db_request: Request, request: PriorUpdateRequest, current_email: str = Depends(get_current_user_email)
 ):
     """
     Updates prior based on currently applied jobs and profile embedding.
     """
+    db = db_request.app.state.db
     user = await db.users.find_one({"email": current_email})
     job = await db.jobs.find_one({"id": request.job_id})
     if not job or "embedding" not in job:
@@ -185,18 +204,18 @@ async def update_priorities(
     return {"message": "Priorities updated successfully"}
 
 @router.get("/recommendations/reset", response_model=dict)
-async def reset_recommendations(current_email: str = Depends(get_current_user_email)):
+async def reset_recommendations(request: Request, current_email: str = Depends(get_current_user_email)):
     """Reset user recommendations to initial state"""
+    db = request.app.state.db
     user = await db.users.find_one({"email": current_email})
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
     # Reset the user's prior distribution
+    db = request.app.state.db
     new_prior = await get_prior(db, user["embedding"]) if "embedding" in user else {}
     await db.users.update_one({"email": current_email}, {"$set": {"prior": new_prior}})
-    return {"message": "Recommendations reset successfully"}
     log_event("recommendations_reset", {
         "email": current_email
     })
-    
     return {"message": "Recommendations reset successfully"}
