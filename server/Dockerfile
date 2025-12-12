@@ -27,7 +27,7 @@ COPY --from=builder /usr/local/lib/python3.11/site-packages \
 COPY . /usr/src/server
 
 # Add server folder to PYTHONPATH
-ENV PYTHONPATH=/usr/src/server
+ENV PYTHONPATH=/usr/src
 
 EXPOSE 8000
 

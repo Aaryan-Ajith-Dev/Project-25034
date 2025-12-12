@@ -39,6 +39,8 @@ pipeline {
                     minikube delete || true
                     minikube start --memory=1500mb --driver=docker || minikube start
                     minikube update-context
+                    minikube enable addons ingress
+                    minikube enable addons metrics-server
                 """
             }
         }
