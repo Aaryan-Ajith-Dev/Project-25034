@@ -2,9 +2,8 @@ pipeline {
     agent any
     
     environment {
-        // Docker Hub credentials (configure in Jenkins: Manage Jenkins -> Credentials)
         DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
-        DOCKER_IMAGE = 'shreyas0s/recsys'
+        DOCKER_IMAGE = 'a3ryn/recsys'
         IMAGE_TAG = "${BUILD_NUMBER}"
         
         // Kubernetes namespace
@@ -41,6 +40,20 @@ pipeline {
                 '''
             }
         }
+
+        stage('Load .env Secrets') {
+            steps {
+                withCredentials([file(credentialsId: 'env-secrets', variable: 'ENVFILE')]) {
+                    sh '''
+                    echo "Loading .env file..."
+                    export $(cat $ENVFILE | xargs)
+                    echo "Environment variables loaded."
+                    '''
+                }
+            }
+        }
+
+
         
         stage('Build Docker Image') {
             steps {
@@ -231,6 +244,19 @@ pipeline {
                         echo "All tests completed successfully!"
                     """
                 }
+
+                // sh """
+                //     echo ""
+                //     echo "===================="
+                //     echo "Running Integration Tests (pytest)"
+                //     echo "===================="
+
+                //     python3 -m pytest
+
+                //     echo ""
+                //     echo "All tests completed successfully!"
+                // """
+                // --maxfail=1 --disable-warnings -q
             }
         }
         
