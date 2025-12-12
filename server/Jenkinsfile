@@ -35,7 +35,8 @@ pipeline {
         stage('Start Kubernetes (Minikube)') {
             steps {
                 sh """
-                    minikube start --driver=docker || minikube start
+                    minikube delete || true
+                    minikube start --memory=1500mb --driver=docker || minikube start
                     minikube update-context
 
                     # make kubeconfig available
