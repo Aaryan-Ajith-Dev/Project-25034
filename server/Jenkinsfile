@@ -196,7 +196,7 @@ pipeline {
         
         stage('Wait for Services') {
             steps {
-                echo '⏳ Waiting for services to stabilize...'
+                echo 'Waiting for services to stabilize...'
                 sh """
                     echo "Waiting 60 seconds for all services to stabilize..."
                     sleep 60
