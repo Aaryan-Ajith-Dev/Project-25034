@@ -38,10 +38,6 @@ pipeline {
                     minikube delete || true
                     minikube start --memory=1500mb --driver=docker || minikube start
                     minikube update-context
-
-                    # make kubeconfig available
-                    mkdir -p ~/.kube
-                    cp /root/.kube/config ~/.kube/config || true
                 """
             }
         }
@@ -73,39 +69,51 @@ pipeline {
             }
         }
 
-        stage('Deploy ELK') {
-            steps {
-                dir("${K8S_DIR}") {
-                    sh """
-                        kubectl apply -f elasticsearch.yaml -n ${K8S_NAMESPACE}
-                        kubectl wait --for=condition=ready pod -l app=elasticsearch -n ${K8S_NAMESPACE} --timeout=300s || true
+        // stage('Deploy ELK') {
+        //     steps {
+        //         dir("${K8S_DIR}") {
+        //             sh """
+        //                 kubectl apply -f elasticsearch.yaml -n ${K8S_NAMESPACE}
+        //                 kubectl wait --for=condition=ready pod -l app=elasticsearch -n ${K8S_NAMESPACE} --timeout=300s || true
 
-                        kubectl apply -f logstash.yaml -n ${K8S_NAMESPACE}
-                        kubectl wait --for=condition=ready pod -l app=logstash -n ${K8S_NAMESPACE} --timeout=180s || true
+        //                 kubectl apply -f logstash.yaml -n ${K8S_NAMESPACE}
+        //                 kubectl wait --for=condition=ready pod -l app=logstash -n ${K8S_NAMESPACE} --timeout=180s || true
 
-                        kubectl apply -f kibana.yaml -n ${K8S_NAMESPACE}
-                        kubectl apply -f filebeat-configmap.yaml -n ${K8S_NAMESPACE}
-                    """
-                }
-            }
-        }
+        //                 kubectl apply -f kibana.yaml -n ${K8S_NAMESPACE}
+        //                 kubectl apply -f filebeat-configmap.yaml -n ${K8S_NAMESPACE}
+        //             """
+        //         }
+        //     }
+        // }
 
         stage('Deploy Backend') {
             steps {
                 dir("${K8S_DIR}") {
-                    sh """
-                        [ -f configmap.yaml ] && kubectl apply -f configmap.yaml -n ${K8S_NAMESPACE}
-                        [ -f secrets.yaml ]   && kubectl apply -f secrets.yaml   -n ${K8S_NAMESPACE}
+                    withCredentials([string(credentialsId: 'vault-pass', variable: 'VAULT_PASS')]) {
+                        sh """
+                            # Apply configmap if it exists
+                            [ -f configmap.yaml ] && kubectl apply -f configmap.yaml -n ${K8S_NAMESPACE}
 
-                        kubectl set image deployment/recsys-backend recsys-backend=${DOCKER_IMAGE}:${IMAGE_TAG} -n ${K8S_NAMESPACE} \
-                          || kubectl apply -f deployment.yaml -n ${K8S_NAMESPACE}
+                            # Decrypt secrets.yaml on-the-fly and apply
+                            if [ -f secrets.yaml ]; then
+                                ansible-vault view --vault-password-file <(echo \$VAULT_PASS) secrets.yaml > /tmp/secrets-plain.yaml
+                                kubectl apply -f /tmp/secrets-plain.yaml -n ${K8S_NAMESPACE}
+                                rm -f /tmp/secrets-plain.yaml
+                            fi
 
-                        kubectl apply -f service.yaml -n ${K8S_NAMESPACE}
-                        kubectl apply -f hpa.yaml     -n ${K8S_NAMESPACE}
-                        kubectl apply -f ingress.yaml -n ${K8S_NAMESPACE}
+                            # Update deployment image if exists, otherwise apply deployment.yaml
+                            kubectl set image deployment/recsys-backend recsys-backend=${DOCKER_IMAGE}:${IMAGE_TAG} -n ${K8S_NAMESPACE} \
+                            || kubectl apply -f deployment.yaml -n ${K8S_NAMESPACE}
 
-                        kubectl rollout status deployment/recsys-backend -n ${K8S_NAMESPACE} --timeout=300s
-                    """
+                            # Apply remaining k8s resources
+                            kubectl apply -f service.yaml -n ${K8S_NAMESPACE}
+                            kubectl apply -f hpa.yaml     -n ${K8S_NAMESPACE}
+                            kubectl apply -f ingress.yaml -n ${K8S_NAMESPACE}
+
+                            # Wait for deployment rollout
+                            kubectl rollout status deployment/recsys-backend -n ${K8S_NAMESPACE} --timeout=300s
+                        """
+                    }
                 }
             }
         }
