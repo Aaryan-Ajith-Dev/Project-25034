@@ -14,6 +14,7 @@ pipeline {
         SERVER_DIR = 'server'
         K8S_DIR    = 'server/k8s'
         TESTS_DIR  = 'server/tests'
+        ANSIBLE_DIR = 'server/ansible'
     }
 
     stages {
@@ -69,22 +70,22 @@ pipeline {
             }
         }
 
-        // stage('Deploy ELK') {
-        //     steps {
-        //         dir("${K8S_DIR}") {
-        //             sh """
-        //                 kubectl apply -f elasticsearch.yaml -n ${K8S_NAMESPACE}
-        //                 kubectl wait --for=condition=ready pod -l app=elasticsearch -n ${K8S_NAMESPACE} --timeout=300s || true
+        stage('Deploy ELK') {
+            steps {
+                dir("${K8S_DIR}") {
+                    sh """
+                        kubectl apply -f elasticsearch.yaml -n ${K8S_NAMESPACE}
+                        kubectl wait --for=condition=ready pod -l app=elasticsearch -n ${K8S_NAMESPACE} --timeout=300s || true
 
-        //                 kubectl apply -f logstash.yaml -n ${K8S_NAMESPACE}
-        //                 kubectl wait --for=condition=ready pod -l app=logstash -n ${K8S_NAMESPACE} --timeout=180s || true
+                        kubectl apply -f logstash.yaml -n ${K8S_NAMESPACE}
+                        kubectl wait --for=condition=ready pod -l app=logstash -n ${K8S_NAMESPACE} --timeout=180s || true
 
-        //                 kubectl apply -f kibana.yaml -n ${K8S_NAMESPACE}
-        //                 kubectl apply -f filebeat-configmap.yaml -n ${K8S_NAMESPACE}
-        //             """
-        //         }
-        //     }
-        // }
+                        kubectl apply -f kibana.yaml -n ${K8S_NAMESPACE}
+                        kubectl apply -f filebeat-configmap.yaml -n ${K8S_NAMESPACE}
+                    """
+                }
+            }
+        }
 
     stage('Deploy Backend') {
         steps {
@@ -124,15 +125,24 @@ pipeline {
             steps {
                 dir("${TESTS_DIR}") {
                     sh """
-                        pip3 install --user -r requirements.txt || true
-                        python3 test_recsys_elk.py
+                        python3 recsys_elk.py
                     """
                 }
 
                 // Integration tests (uncomment when ready)
-                // sh "python3 -m pytest"
+                sh "python3 -m pytest"
             }
         }
+        // stage('Ansible Setup') {
+        //     steps {
+        //         dir("${ANSIBLE_DIR}") {
+        //             sh """
+        //                 ansible-playbook -i inventory.ini playbook.yaml
+        //             """
+        //         }
+                    
+        //     }
+        // }
     }
 
     post {
