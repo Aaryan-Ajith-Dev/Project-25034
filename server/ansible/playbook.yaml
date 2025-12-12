@@ -1,52 +1,46 @@
----
-- name: Deploy FastAPI Docker app
+- name: Apply Kubernetes resources
   hosts: web
   become: true
-
   vars:
-    image_name: fastapi-app
-    container_name: fastapi
-
+    k8s_namespace: recsys
+    docker_image: a3ryn/recsys
+    image_tag: latest
   tasks:
-    - name: Ensure Docker is installed
-      apt:
-        name: docker.io
+    - name: Apply configmap
+      k8s:
         state: present
-      tags: install
-
-    - name: Ensure Docker service is running
-      service:
-        name: docker
-        state: started
-        enabled: yes
-
-    - name: Copy application files
-      synchronize:
-        src: "../"
-        dest: "/opt/app"
-        recursive: yes
-        delete: no
-
-    - name: Build Docker image
-      community.docker.docker_image:
-        name: "{{ image_name }}"
-        tag: latest
-        build:
-          path: /opt/app
-          pull: yes
-        source: build
-
-    - name: Stop old container if exists
-      community.docker.docker_container:
-        name: "{{ container_name }}"
-        state: absent
+        definition: "{{ lookup('file', 'k8s/configmap.yaml') }}"
+        namespace: "{{ k8s_namespace }}"
       ignore_errors: yes
 
-    - name: Run container
-      community.docker.docker_container:
-        name: "{{ container_name }}"
-        image: "{{ image_name }}:latest"
-        state: started
-        restart_policy: always
-        published_ports:
-          - "80:80"
+    - name: Decrypt and apply secrets.yaml if vaulted
+      shell: |
+        ansible-vault view --vault-password-file /root/.vault_pass secrets.yaml > /tmp/secrets-plain.yaml
+        kubectl apply -f /tmp/secrets-plain.yaml -n {{ k8s_namespace }}
+        rm -f /tmp/secrets-plain.yaml
+      args:
+        executable: /bin/bash
+      ignore_errors: yes
+
+    - name: Apply deployment
+      k8s:
+        state: present
+        definition: "{{ lookup('file', 'k8s/deployment.yaml') }}"
+        namespace: "{{ k8s_namespace }}"
+
+    - name: Set deployment image
+      shell: kubectl set image deployment/recsys-backend recsys-backend={{ docker_image }}:{{ image_tag }} -n {{ k8s_namespace }}
+      ignore_errors: yes
+
+    - name: Apply service, HPA, ingress
+      k8s:
+        state: present
+        definition: "{{ lookup('file', item) }}"
+        namespace: "{{ k8s_namespace }}"
+      loop:
+        - k8s/service.yaml
+        - k8s/hpa.yaml
+        - k8s/ingress.yaml
+
+    - name: Wait for deployment rollout
+      shell: kubectl rollout status deployment/recsys-backend -n {{ k8s_namespace }} --timeout=300s
