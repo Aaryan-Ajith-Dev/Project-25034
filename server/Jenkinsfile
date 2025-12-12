@@ -86,38 +86,40 @@ pipeline {
         //     }
         // }
 
-        stage('Deploy Backend') {
-            steps {
-                dir("${K8S_DIR}") {
-                    withCredentials([string(credentialsId: 'vault-pass', variable: 'VAULT_PASS')]) {
-                        sh """
-                            # Apply configmap if it exists
-                            [ -f configmap.yaml ] && kubectl apply -f configmap.yaml -n ${K8S_NAMESPACE}
+    stage('Deploy Backend') {
+        steps {
+            dir("${K8S_DIR}") {
+                withCredentials([string(credentialsId: 'vault-pass', variable: 'VAULT_PASS')]) {
+                    sh '''
+                        #!/bin/bash
 
-                            # Decrypt secrets.yaml on-the-fly and apply
-                            if [ -f secrets.yaml ]; then
-                                ansible-vault view --vault-password-file <(echo \$VAULT_PASS) secrets.yaml > /tmp/secrets-plain.yaml
-                                kubectl apply -f /tmp/secrets-plain.yaml -n ${K8S_NAMESPACE}
-                                rm -f /tmp/secrets-plain.yaml
-                            fi
+                        # Apply configmap
+                        [ -f configmap.yaml ] && kubectl apply -f configmap.yaml -n ${K8S_NAMESPACE}
 
-                            # Update deployment image if exists, otherwise apply deployment.yaml
-                            kubectl set image deployment/recsys-backend recsys-backend=${DOCKER_IMAGE}:${IMAGE_TAG} -n ${K8S_NAMESPACE} \
+                        # Decrypt secrets.yaml
+                        if [ -f secrets.yaml ]; then
+                            echo "$VAULT_PASS" > /tmp/vault-pass.txt
+                            ansible-vault view --vault-password-file /tmp/vault-pass.txt secrets.yaml > /tmp/secrets-plain.yaml
+                            kubectl apply -f /tmp/secrets-plain.yaml -n ${K8S_NAMESPACE}
+                            rm -f /tmp/vault-pass.txt /tmp/secrets-plain.yaml
+                        fi
+
+                        # Update deployment image
+                        kubectl set image deployment/recsys-backend recsys-backend=$DOCKER_IMAGE:$IMAGE_TAG -n ${K8S_NAMESPACE} \
                             || kubectl apply -f deployment.yaml -n ${K8S_NAMESPACE}
 
-                            # Apply remaining k8s resources
-                            kubectl apply -f service.yaml -n ${K8S_NAMESPACE}
-                            kubectl apply -f hpa.yaml     -n ${K8S_NAMESPACE}
-                            kubectl apply -f ingress.yaml -n ${K8S_NAMESPACE}
+                        # Apply remaining resources
+                        kubectl apply -f service.yaml -n ${K8S_NAMESPACE}
+                        kubectl apply -f hpa.yaml     -n ${K8S_NAMESPACE}
+                        kubectl apply -f ingress.yaml -n ${K8S_NAMESPACE}
 
-                            # Wait for deployment rollout
-                            kubectl rollout status deployment/recsys-backend -n ${K8S_NAMESPACE} --timeout=300s
-                        """
-                    }
+                        # Wait for rollout
+                        kubectl rollout status deployment/recsys-backend -n ${K8S_NAMESPACE} --timeout=300s
+                    '''
                 }
             }
         }
-
+    }
         stage('Tests') {
             steps {
                 dir("${TESTS_DIR}") {
