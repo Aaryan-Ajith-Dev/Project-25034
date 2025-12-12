@@ -29,10 +29,10 @@ spec:
             - configMapRef:
                 name: recsys-config
 
-          # # Mount volume for logs
-          # volumeMounts:
-          #   - name: app-logs
-          #     mountPath: /app/logs
+          # Mount volume for logs
+          volumeMounts:
+            - name: app-logs
+              mountPath: /app/logs
 
           # Optional resources
           resources:
@@ -43,32 +43,32 @@ spec:
               cpu: "500m"
               memory: "512Mi"
 
-      #   # Filebeat sidecar container
-      #   - name: filebeat
-      #     image: docker.elastic.co/beats/filebeat:8.11.1
-      #     args: [
-      #       "-c", "/etc/filebeat.yml",
-      #       "-e",
-      #     ]
-      #     volumeMounts:
-      #       - name: filebeat-config
-      #         mountPath: /etc/filebeat.yml
-      #         subPath: filebeat.yml
-      #       - name: app-logs
-      #         mountPath: /app/logs
-      #         readOnly: true
-      #     resources:
-      #       requests:
-      #         cpu: "100m"
-      #         memory: "128Mi"
-      #       limits:
-      #         cpu: "200m"
-      #         memory: "256Mi"
+        # Filebeat sidecar container
+        - name: filebeat
+          image: docker.elastic.co/beats/filebeat:8.11.1
+          args: [
+            "-c", "/etc/filebeat.yml",
+            "-e",
+          ]
+          volumeMounts:
+            - name: filebeat-config
+              mountPath: /etc/filebeat.yml
+              subPath: filebeat.yml
+            - name: app-logs
+              mountPath: /app/logs
+              readOnly: true
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
 
-      # volumes:
-      #   - name: app-logs
-      #     emptyDir: {}
-      #   - name: filebeat-config
-      #     configMap:
-      #       name: filebeat-config
-      #       defaultMode: 0644
+      volumes:
+        - name: app-logs
+          emptyDir: {}
+        - name: filebeat-config
+          configMap:
+            name: filebeat-config
+            defaultMode: 0644
